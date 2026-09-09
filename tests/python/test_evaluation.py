@@ -73,3 +73,19 @@ def test_run_recorder_saves_checkpoint(tmp_path: Path) -> None:
     assert path.exists()
     loaded = torch.load(path, weights_only=True)
     assert torch.equal(loaded["tensor"], torch.zeros(3))
+
+
+def test_latest_checkpoint_sorts_numerically(tmp_path: Path) -> None:
+    config = ExperimentConfig(experiment_id="ckpt_order", results_dir=str(tmp_path))
+    recorder = RunRecorder(config, config.results_dir)
+    recorder.save_checkpoint(50000, {"step": 50000})
+    recorder.save_checkpoint(100000, {"step": 100000})
+    recorder.save_checkpoint(5000, {"step": 5000})
+    latest = recorder.latest_checkpoint()
+    assert latest is not None and latest.stem == "step_100000"
+
+
+def test_latest_checkpoint_empty_dir(tmp_path: Path) -> None:
+    config = ExperimentConfig(experiment_id="ckpt_empty", results_dir=str(tmp_path))
+    recorder = RunRecorder(config, config.results_dir)
+    assert recorder.latest_checkpoint() is None

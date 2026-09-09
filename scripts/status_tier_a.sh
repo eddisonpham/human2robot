@@ -13,7 +13,7 @@ check_run() {
     grep -E "Resumed|Training complete" "$log" | tail -2
     latest_eval=$(grep "eval_return_mean" "$results/metrics.jsonl" 2>/dev/null | tail -1)
     [ -n "$latest_eval" ] && echo "latest eval: $latest_eval"
-    latest_ckpt=$(ls "$results/checkpoints/" 2>/dev/null | tail -1)
+    latest_ckpt=$(ls -v "$results/checkpoints/" 2>/dev/null | tail -1)
     [ -n "$latest_ckpt" ] && echo "latest checkpoint: $latest_ckpt"
   else
     echo "no log yet"
