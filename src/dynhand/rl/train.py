@@ -43,7 +43,20 @@ def _subsample(
     return {key: value[idx] for key, value in demos.items()}
 
 
-def train(config: ExperimentConfig) -> dict[str, float]:
+def _load_resume_checkpoint(path, sac, buffer, rng) -> int:
+    """Restore trainer state from a checkpoint, return its global step."""
+    checkpoint = torch.load(path, map_location=sac.device, weights_only=False)
+    sac.load_state_dict(checkpoint["sac"])
+    if checkpoint.get("buffer") is not None:
+        buffer.load_state(checkpoint["buffer"])
+    return int(checkpoint["global_step"])
+
+
+def train(
+    config: ExperimentConfig,
+    resume: bool = False,
+    run_dir_override: str | None = None,
+) -> dict[str, float]:
     """Run one training job from a validated config, return final metrics."""
     if config.dynamics_aug.enabled:
         raise NotImplementedError(
@@ -52,6 +65,8 @@ def train(config: ExperimentConfig) -> dict[str, float]:
     seed_everything(config.seed)
     set_torch_threads(8)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if run_dir_override is not None:
+        config.results_dir = run_dir_override
     recorder = RunRecorder(config, config.results_dir)
     writer = SummaryWriter(log_dir=str(recorder.run_dir / "tb"))
 
@@ -72,6 +87,13 @@ def train(config: ExperimentConfig) -> dict[str, float]:
         device,
     )
 
+    start_step = 0
+    if resume:
+        latest = recorder.latest_checkpoint()
+        if latest is not None:
+            start_step = _load_resume_checkpoint(latest, sac, buffer, rng)
+            print(f"Resumed from {latest} at step {start_step}")
+
     demo_buffer = None
     if config.demo.enabled:
         demos = _demo_transitions(config, config.seed)
@@ -83,26 +105,27 @@ def train(config: ExperimentConfig) -> dict[str, float]:
             demos["rewards"],
             demos["dones"],
         )
-        bc = BCTrainer(
-            sac,
-            demos["obs"],
-            demos["acts"],
-            lr=config.demo.bc_lr,
-            holdout_fraction=config.demo.bc_holdout_fraction,
-            rng=rng,
-        )
-        bc_metrics = bc.train_epochs(
-            epochs=config.demo.bc_epochs,
-            batch_size=config.demo.bc_batch_size,
-            patience=config.demo.bc_patience,
-        )
-        recorder.log_metrics(0, bc_metrics)
-        for key, value in bc_metrics.items():
-            writer.add_scalar(f"train/{key}", value, 0)
+        if start_step == 0:
+            bc = BCTrainer(
+                sac,
+                demos["obs"],
+                demos["acts"],
+                lr=config.demo.bc_lr,
+                holdout_fraction=config.demo.bc_holdout_fraction,
+                rng=rng,
+            )
+            bc_metrics = bc.train_epochs(
+                epochs=config.demo.bc_epochs,
+                batch_size=config.demo.bc_batch_size,
+                patience=config.demo.bc_patience,
+            )
+            recorder.log_metrics(0, bc_metrics)
+            for key, value in bc_metrics.items():
+                writer.add_scalar(f"train/{key}", value, 0)
 
     obs, _ = envs.reset(seed=worker_seed(config.seed, 0))
-    global_step = 0
-    next_eval = config.eval.interval_steps
+    global_step = start_step
+    next_eval = ((start_step // config.eval.interval_steps) + 1) * config.eval.interval_steps
     metrics: dict[str, float] = {}
 
     while global_step < config.total_env_steps:
@@ -157,12 +180,22 @@ def train(config: ExperimentConfig) -> dict[str, float]:
 
         if global_step % config.checkpoint_interval < config.num_envs:
             recorder.save_checkpoint(
-                global_step, {"sac": sac.state_dict(), "global_step": global_step}
+                global_step,
+                {
+                    "sac": sac.state_dict(),
+                    "buffer": buffer.state_dict(),
+                    "global_step": global_step,
+                },
             )
 
     envs.close()
     final = recorder.save_checkpoint(
-        config.total_env_steps, {"sac": sac.state_dict(), "global_step": global_step}
+        config.total_env_steps,
+        {
+            "sac": sac.state_dict(),
+            "buffer": buffer.state_dict(),
+            "global_step": global_step,
+        },
     )
     final_metrics = evaluate(sac, config.env_id, config.eval.episodes, config.seed)
     recorder.log_metrics(global_step, final_metrics)
@@ -175,11 +208,19 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Train DynHand SAC")
     parser.add_argument("--config", required=True, help="Path to experiment YAML")
     parser.add_argument("--seed", type=int, default=None, help="Override config seed")
+    parser.add_argument(
+        "--resume", action="store_true", help="Resume from the latest checkpoint"
+    )
+    parser.add_argument(
+        "--results-dir",
+        default=None,
+        help="Override the results directory (used by run scripts)",
+    )
     args = parser.parse_args()
     config = load_config(args.config)
     if args.seed is not None:
         config.seed = args.seed
-    train(config)
+    train(config, resume=args.resume, run_dir_override=args.results_dir)
 
 
 if __name__ == "__main__":

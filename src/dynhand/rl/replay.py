@@ -67,3 +67,29 @@ class ReplayBuffer:
             "rewards": self.rewards[idx],
             "dones": self.dones[idx],
         }
+
+    def state_dict(self) -> dict[str, np.ndarray | int]:
+        """Return arrays and pointers for checkpointing."""
+        return {
+            "obs": self.obs,
+            "acts": self.acts,
+            "next_obs": self.next_obs,
+            "rewards": self.rewards,
+            "dones": self.dones,
+            "ptr": self.ptr,
+            "size": self.size,
+        }
+
+    def load_state(self, state: dict[str, np.ndarray | int]) -> None:
+        """Restore arrays and pointers from a checkpoint."""
+        if state["obs"].shape != self.obs.shape:
+            raise ValueError(
+                f"buffer shape mismatch: checkpoint {state['obs'].shape} vs {self.obs.shape}"
+            )
+        self.obs = state["obs"]
+        self.acts = state["acts"]
+        self.next_obs = state["next_obs"]
+        self.rewards = state["rewards"]
+        self.dones = state["dones"]
+        self.ptr = int(state["ptr"])
+        self.size = int(state["size"])
