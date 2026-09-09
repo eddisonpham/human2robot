@@ -5,12 +5,12 @@ and trainer: if SB3 and our SAC diverge wildly on the same task and seed
 budget, the bug is in our code. This is a debugging tool per
 agents/09_PHASE_PLAN.md Phase 1, not the primary training path.
 
-Run with: uv sync --group sb3 && uv run dynhand-sb3-check --config configs/tier_a_relocate.yaml
+Run with:
+  uv sync --group sb3
+  uv run dynhand-sb3-check --config configs/tier_a_relocate.yaml
 """
 
 import argparse
-
-import numpy as np
 
 
 def run_sb3_check(
@@ -26,8 +26,8 @@ def run_sb3_check(
     from stable_baselines3.common.monitor import Monitor
     from stable_baselines3.common.vec_env import SubprocVecEnv, make_vec_env
 
-    from dynhand.envs.record import RunRecorder
     from dynhand.config.schema import ExperimentConfig
+    from dynhand.envs.record import RunRecorder
 
     config = ExperimentConfig(experiment_id="sb3_check", env_id=env_id)
     recorder = RunRecorder(config, output_dir)

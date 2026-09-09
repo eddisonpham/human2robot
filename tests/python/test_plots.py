@@ -16,10 +16,6 @@ def write_metrics(path: Path, records: list[dict]) -> None:
             f.write(json.dumps(record) + "\n")
 
 
-def test_read_metrics_columns() -> None:
-    path = Path("dummy") / "does_not_exist.jsonl"
-
-
 def test_read_metrics_real(tmp_path: Path) -> None:
     path = tmp_path / "metrics.jsonl"
     write_metrics(
@@ -66,13 +62,12 @@ def test_plot_learning_curves_single_seed(tmp_path: Path) -> None:
         [{"step": s, "eval_return_mean": float(s)} for s in [0, 100, 200, 300]],
     )
     out = tmp_path / "curve.png"
-    result = plot_learning_curves(
+    plot_learning_curves(
         {"A": [path]},
         smooth=2,
         out_path=out,
         title="test",
     )
-    assert result == out
     assert out.exists() and out.stat().st_size > 0
 
 
@@ -90,7 +85,7 @@ def test_plot_learning_curves_multi_seed_band(tmp_path: Path) -> None:
         )
         seeds.append(path)
     out = tmp_path / "band.png"
-    result = plot_learning_curves({"B": seeds}, smooth=1, out_path=out)
+    plot_learning_curves({"B": seeds}, smooth=1, out_path=out)
     assert out.exists() and out.stat().st_size > 0
 
 

@@ -2,9 +2,6 @@
 
 from pathlib import Path
 
-import numpy as np
-
-from dynhand.config.schema import ExperimentConfig
 from dynhand.evaluation import sb3_check
 
 
