@@ -1,0 +1,11 @@
+experiment_id: tier_b_pickup_cond_a
+env_id: AdroitHandRelocate-v1
+seed: 0
+condition: A
+total_env_steps: 2000000
+num_envs: 12
+start_steps: 10000
+checkpoint_interval: 50000
+
+# Placeholder: Tier B uses the custom Allegro pickup environment once
+# Phase 2 builds it. The env_id above is temporary.

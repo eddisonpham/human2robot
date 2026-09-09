@@ -1,0 +1,11 @@
+experiment_id: tier_a_relocate_cond_a
+env_id: AdroitHandRelocate-v1
+seed: 0
+condition: A
+total_env_steps: 1000000
+num_envs: 8
+start_steps: 5000
+checkpoint_interval: 50000
+eval:
+  interval_steps: 10000
+  episodes: 5

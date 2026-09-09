@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+dist/
+build/
+
+# Rust
+target/
+
+# Third-party reference repos (cloned by scripts/setup_references.sh)
+references/
+
+# Isolated extra environments (HaMeR)
+envs/
+
+# Data and experiment outputs (regenerated, never committed)
+data/raw/**
+data/processed/**
+data/demonstrations/**
+results/**
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+!data/demonstrations/.gitkeep
+!results/.gitkeep
+
+# Model artifacts
+*.pt
+*.onnx
+
+# Logs
+*.log
+runs/
+
+# OS and editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

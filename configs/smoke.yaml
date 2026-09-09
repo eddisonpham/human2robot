@@ -1,0 +1,15 @@
+experiment_id: smoke
+env_id: Pendulum-v1
+seed: 0
+condition: A
+total_env_steps: 400
+num_envs: 4
+start_steps: 100
+checkpoint_interval: 200
+eval:
+  interval_steps: 200
+  episodes: 2
+sac:
+  batch_size: 64
+  buffer_size: 5000
+  hidden_dim: 64
