@@ -84,7 +84,8 @@ class ReplayBuffer:
         """Restore arrays and pointers from a checkpoint."""
         if state["obs"].shape != self.obs.shape:
             raise ValueError(
-                f"buffer shape mismatch: checkpoint {state['obs'].shape} vs {self.obs.shape}"
+                f"buffer shape mismatch: checkpoint {state['obs'].shape}"
+                f" vs {self.obs.shape}"
             )
         self.obs = state["obs"]
         self.acts = state["acts"]

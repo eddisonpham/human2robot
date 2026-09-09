@@ -58,6 +58,7 @@ packages = ["src/dynhand"]
 [project.scripts]
 dynhand-train = "dynhand.rl.train:main"
 dynhand-eval = "dynhand.evaluation.cli:main"
+dynhand-plot = "dynhand.evaluation.plot_cli:main"
 dynhand-sb3-check = "dynhand.evaluation.sb3_check:main"
 
 [tool.pytest.ini_options]

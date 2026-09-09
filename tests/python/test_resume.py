@@ -10,7 +10,9 @@ from dynhand.rl.train import _load_resume_checkpoint, train
 from dynhand.utils.seed import seed_everything
 
 
-def make_config(tmp_path, total_steps: int, exp_id: str = "resume_test") -> ExperimentConfig:
+def make_config(
+    tmp_path, total_steps: int, exp_id: str = "resume_test"
+) -> ExperimentConfig:
     return ExperimentConfig(
         experiment_id=exp_id,
         env_id="Pendulum-v1",
@@ -31,7 +33,9 @@ def test_buffer_state_roundtrip() -> None:
     rng = np.random.default_rng(0)
     buf = ReplayBuffer(2, 1, 10, rng)
     for i in range(6):
-        buf.add(np.full(2, i, dtype=np.float32), np.zeros(1), np.zeros(1), float(i), 0.0)
+        buf.add(
+            np.full(2, i, dtype=np.float32), np.zeros(1), np.zeros(1), float(i), 0.0
+        )
     state = buf.state_dict()
     buf2 = ReplayBuffer(2, 1, 10, np.random.default_rng(1))
     buf2.load_state(state)
@@ -52,11 +56,18 @@ def test_buffer_load_state_rejects_shape_mismatch() -> None:
 
 
 def test_load_resume_checkpoint_restores_sac(tmp_path) -> None:
-    from dynhand.rl.sac import SAC
     from dynhand.config.schema import SACConfig
+    from dynhand.rl.sac import SAC
 
     seed_everything(0)
-    sac = SAC(3, 1, np.array([-2.0], dtype=np.float32), np.array([2.0], dtype=np.float32), SACConfig(hidden_dim=32), torch.device("cpu"))
+    sac = SAC(
+        3,
+        1,
+        np.array([-2.0], dtype=np.float32),
+        np.array([2.0], dtype=np.float32),
+        SACConfig(hidden_dim=32),
+        torch.device("cpu"),
+    )
     rng = np.random.default_rng(0)
     buffer = ReplayBuffer(3, 1, 100, rng)
     recorder = RunRecorder(
@@ -64,16 +75,26 @@ def test_load_resume_checkpoint_restores_sac(tmp_path) -> None:
         str(tmp_path),
     )
     recorder.save_checkpoint(
-        500, {"sac": sac.state_dict(), "buffer": buffer.state_dict(), "global_step": 500}
+        500,
+        {"sac": sac.state_dict(), "buffer": buffer.state_dict(), "global_step": 500},
     )
-    sac2 = SAC(3, 1, np.array([-2.0], dtype=np.float32), np.array([2.0], dtype=np.float32), SACConfig(hidden_dim=32), torch.device("cpu"))
+    sac2 = SAC(
+        3,
+        1,
+        np.array([-2.0], dtype=np.float32),
+        np.array([2.0], dtype=np.float32),
+        SACConfig(hidden_dim=32),
+        torch.device("cpu"),
+    )
     buffer2 = ReplayBuffer(3, 1, 100, rng)
     path = recorder.latest_checkpoint()
     assert path is not None
     step = _load_resume_checkpoint(path, sac2, buffer2, rng)
     assert step == 500
     obs = np.zeros(3, dtype=np.float32)
-    assert np.allclose(sac.act(obs, deterministic=True), sac2.act(obs, deterministic=True))
+    assert np.allclose(
+        sac.act(obs, deterministic=True), sac2.act(obs, deterministic=True)
+    )
 
 
 def test_train_resume_continues_and_skips_bc(tmp_path) -> None:
@@ -85,7 +106,9 @@ def test_train_resume_continues_and_skips_bc(tmp_path) -> None:
     config2 = make_config(tmp_path, total_steps=400, exp_id="resume_flow")
     metrics = train(config2, resume=True)
     assert "eval_return_mean" in metrics
-    lines = (tmp_path / "resume_flow" / "metrics.jsonl").read_text().strip().splitlines()
+    lines = (
+        (tmp_path / "resume_flow" / "metrics.jsonl").read_text().strip().splitlines()
+    )
     steps = [int(__import__("json").loads(line)["step"]) for line in lines]
     assert max(steps) == 400
     assert any(s == 300 for s in steps)

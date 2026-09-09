@@ -125,7 +125,9 @@ def train(
 
     obs, _ = envs.reset(seed=worker_seed(config.seed, 0))
     global_step = start_step
-    next_eval = ((start_step // config.eval.interval_steps) + 1) * config.eval.interval_steps
+    next_eval = (
+        (start_step // config.eval.interval_steps) + 1
+    ) * config.eval.interval_steps
     metrics: dict[str, float] = {}
 
     while global_step < config.total_env_steps:
