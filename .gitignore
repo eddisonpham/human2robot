@@ -17,6 +17,10 @@ target/
 # Third-party reference repos (cloned by scripts/setup_references.sh)
 references/
 
+# Agent planning documents are local working material.
+agents/*
+!agents/RESUME_ENTRY.md
+
 # Isolated extra environments (HaMeR)
 envs/hamer/
 
