@@ -11,6 +11,8 @@ from pathlib import Path
 
 import numpy as np
 
+from dynhand.evaluation.audit import audit_metrics
+
 
 def read_metrics(path: str | Path) -> dict[str, np.ndarray]:
     """Read a metrics.jsonl file into column arrays keyed by metric name."""
@@ -56,6 +58,9 @@ def plot_learning_curves(
     for label, paths in runs.items():
         series = []
         for path in paths:
+            report = audit_metrics(path, metric=metric)
+            if not report.healthy:
+                raise ValueError(f"unhealthy metrics stream {path}: {report}")
             data = read_metrics(path)
             if metric not in data:
                 raise KeyError(f"{metric} not found in {path}")

@@ -8,7 +8,8 @@ import pytest
 import yaml
 
 from dynhand.config.schema import ExperimentConfig
-from dynhand.envs.record import RunRecorder
+from dynhand.envs.record import RunLock, RunRecorder
+from dynhand.evaluation.audit import audit_metrics
 from dynhand.evaluation.evaluate import build_single_env, evaluate
 
 
@@ -52,6 +53,7 @@ def test_run_recorder_creates_manifest_files(tmp_path: Path) -> None:
     assert (recorder.run_dir / "metrics.jsonl").exists()
     saved = yaml.safe_load((recorder.run_dir / "config.yaml").read_text())
     assert saved["experiment_id"] == "recorder_test"
+    recorder.close()
 
 
 def test_run_recorder_logs_metrics(tmp_path: Path) -> None:
@@ -63,6 +65,18 @@ def test_run_recorder_logs_metrics(tmp_path: Path) -> None:
     assert len(lines) == 2
     record = json.loads(lines[1])
     assert record == {"step": 200, "reward": 2.5}
+    recorder.close()
+
+
+def test_run_lock_rejects_second_owner(tmp_path: Path) -> None:
+    first = RunLock(tmp_path / "run" / ".run.lock")
+    second = RunLock(tmp_path / "run" / ".run.lock")
+    first.acquire()
+    with pytest.raises(RuntimeError, match="already locked"):
+        second.acquire()
+    first.close()
+    second.acquire()
+    second.close()
 
 
 def test_run_recorder_saves_checkpoint(tmp_path: Path) -> None:
@@ -73,6 +87,7 @@ def test_run_recorder_saves_checkpoint(tmp_path: Path) -> None:
     assert path.exists()
     loaded = torch.load(path, weights_only=True)
     assert torch.equal(loaded["tensor"], torch.zeros(3))
+    recorder.close()
 
 
 def test_latest_checkpoint_sorts_numerically(tmp_path: Path) -> None:
@@ -83,9 +98,40 @@ def test_latest_checkpoint_sorts_numerically(tmp_path: Path) -> None:
     recorder.save_checkpoint(5000, {"step": 5000})
     latest = recorder.latest_checkpoint()
     assert latest is not None and latest.stem == "step_100000"
+    recorder.close()
 
 
 def test_latest_checkpoint_empty_dir(tmp_path: Path) -> None:
     config = ExperimentConfig(experiment_id="ckpt_empty", results_dir=str(tmp_path))
     recorder = RunRecorder(config, config.results_dir)
     assert recorder.latest_checkpoint() is None
+    recorder.close()
+
+
+def test_audit_metrics_reports_corruption(tmp_path: Path) -> None:
+    path = tmp_path / "metrics.jsonl"
+    path.write_text(
+        "\n".join(
+            [
+                '{"step": 20, "eval_return_mean": 1.0}',
+                '{"step": 10, "eval_return_mean": 0.5}',
+                '{"step": 10, "eval_return_mean": 0.6}',
+                "not json",
+            ]
+        )
+        + "\n"
+    )
+    report = audit_metrics(path)
+    assert report.eval_lines == 3
+    assert report.malformed_lines == 1
+    assert report.duplicate_steps == [10]
+    assert report.out_of_order_transitions == 1
+    assert report.healthy is False
+
+
+def test_audit_metrics_ignores_non_eval_records(tmp_path: Path) -> None:
+    path = tmp_path / "metrics.jsonl"
+    path.write_text('{"step": 0, "bc_train_loss": 1.0}\n')
+    report = audit_metrics(path)
+    assert report.eval_lines == 0
+    assert report.healthy is True

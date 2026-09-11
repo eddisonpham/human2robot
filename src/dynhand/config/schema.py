@@ -26,7 +26,7 @@ def apply_condition(
     demo: "DemoConfig",
     dynamics: "DynamicsAugConfig",
 ) -> None:
-    """Force demo/dynamics flags to match the canonical condition table."""
+    """Force demo and dynamics flags to match the condition table."""
     flags = CONDITION_FLAGS[condition]
     demo.enabled = bool(flags["demo_enabled"])
     dynamics.enabled = bool(flags["dynamics_enabled"])

@@ -61,38 +61,23 @@ Evaluate a checkpoint:
 uv run dynhand-eval --config configs/tier_a_relocate.yaml --checkpoint results/<run>/checkpoints/final.pt
 ```
 
-### Running experiments
-
-Training runs execute sequentially (concurrent processes contend for CPU
-and drop aggregate throughput roughly fivefold). Launch the Tier A queue:
-
-```bash
-bash scripts/launch_tier_a.sh
-```
-
-Check progress at any time:
+Run names must be unique per seed. The recorder takes an operating-system
+lock on each run directory and refuses a second writer. The queue scripts
+use this convention automatically:
 
 ```bash
+bash scripts/kill_stale_trainers.sh
+bash scripts/queue_phase1.sh
 bash scripts/status_tier_a.sh
 ```
 
-Runs resume from their latest checkpoint if interrupted: just relaunch
-with the same config. Compare learning curves across runs:
+The queue runs jobs sequentially, stops on the first failure, and records
+separate output for each seed. Audit a metrics stream before plotting:
 
 ```bash
-uv run dynhand-plot --runs "SAC=results/tier_a_relocate_cond_a, SAC+demo=results/tier_a_relocate_cond_b" --out results/plots/tier_a.png
+uv run python -c "from dynhand.evaluation.audit import audit_metrics; print(audit_metrics('results/<run>/metrics.jsonl'))"
 ```
 
-Cross-check the environment with Stable-Baselines3's SAC (requires
-`uv sync --group sb3`):
-
-```bash
-uv run dynhand-sb3-check --config configs/tier_a_relocate.yaml
-```
-
-The five ablation conditions (A plain RL, B demo-guided, C black-box
-dynamics, D physics plus residual dynamics, E full) are selected through
-the config files in `configs/`. All conditions run the same trainer.
 
 ## Project layout
 

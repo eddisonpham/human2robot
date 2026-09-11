@@ -15,7 +15,7 @@ from dynhand.config.loader import load_config
 from dynhand.config.schema import ExperimentConfig
 from dynhand.envs.record import RunRecorder
 from dynhand.envs.vec import make_vec_env
-from dynhand.evaluation import evaluate
+from dynhand.evaluation.evaluate import evaluate
 from dynhand.rl.bc import BCTrainer
 from dynhand.rl.demo import load_minari_transitions
 from dynhand.rl.replay import ReplayBuffer
@@ -56,12 +56,15 @@ def train(
     config: ExperimentConfig,
     resume: bool = False,
     run_dir_override: str | None = None,
+    run_name: str | None = None,
 ) -> dict[str, float]:
     """Run one training job from a validated config, return final metrics."""
     if config.dynamics_aug.enabled:
         raise NotImplementedError(
             "Dynamics-model augmentation (conditions C, D, E) is a later phase"
         )
+    if run_name is not None:
+        config.experiment_id = run_name
     seed_everything(config.seed)
     set_torch_threads(8)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -129,6 +132,7 @@ def train(
         (start_step // config.eval.interval_steps) + 1
     ) * config.eval.interval_steps
     metrics: dict[str, float] = {}
+    last_eval_step: int | None = None
 
     while global_step < config.total_env_steps:
         if global_step < config.start_steps:
@@ -178,6 +182,7 @@ def train(
             writer.add_scalar(
                 "eval/return_mean", eval_metrics["eval_return_mean"], global_step
             )
+            last_eval_step = global_step
             next_eval += config.eval.interval_steps
 
         if global_step % config.checkpoint_interval < config.num_envs:
@@ -200,8 +205,10 @@ def train(
         },
     )
     final_metrics = evaluate(sac, config.env_id, config.eval.episodes, config.seed)
-    recorder.log_metrics(global_step, final_metrics)
+    if last_eval_step != global_step:
+        recorder.log_metrics(global_step, final_metrics)
     writer.close()
+    recorder.close()
     print(f"Training complete. Final checkpoint: {final}")
     return final_metrics
 
@@ -216,13 +223,23 @@ def main() -> None:
     parser.add_argument(
         "--results-dir",
         default=None,
-        help="Override the results directory (used by run scripts)",
+        help="Override the results directory",
+    )
+    parser.add_argument(
+        "--run-name",
+        default=None,
+        help="Unique output directory name for this seed or replicate",
     )
     args = parser.parse_args()
     config = load_config(args.config)
     if args.seed is not None:
         config.seed = args.seed
-    train(config, resume=args.resume, run_dir_override=args.results_dir)
+    train(
+        config,
+        resume=args.resume,
+        run_dir_override=args.results_dir,
+        run_name=args.run_name,
+    )
 
 
 if __name__ == "__main__":
