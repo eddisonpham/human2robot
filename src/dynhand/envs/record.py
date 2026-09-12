@@ -1,9 +1,11 @@
 """Experiment output recording and process-safe run ownership."""
 
+import hashlib
 import json
 import os
 import platform
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import IO
 
@@ -106,9 +108,21 @@ class RunRecorder:
                 f.write(get_git_commit() + "\n")
             with open(self.run_dir / "system_info.json", "w", encoding="utf-8") as f:
                 json.dump(self._system_info(), f, indent=2)
+            self._write_status("running")
         except Exception:
             self.lock.close()
             raise
+
+    def mark_completed(self) -> None:
+        """Record successful completion without releasing run ownership."""
+        self._write_status("completed")
+
+    def mark_failed(self, error: BaseException) -> None:
+        """Record a failed run and its error type before cleanup."""
+        self._write_status(
+            "failed",
+            {"error_type": type(error).__name__, "error": str(error)},
+        )
 
     def close(self) -> None:
         """Release ownership of the run directory."""
@@ -127,9 +141,16 @@ class RunRecorder:
             f.write(json.dumps(record) + "\n")
 
     def save_checkpoint(self, step: int, state: dict) -> Path:
-        """Save one checkpoint under the run's checkpoint directory."""
+        """Atomically save one checkpoint under the run's checkpoint directory."""
         path = self.checkpoint_dir / f"step_{step}.pt"
-        torch.save(state, path)
+        temporary = path.with_suffix(".pt.tmp")
+        torch.save(state, temporary)
+        temporary.replace(path)
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        checksum_path = self.checkpoint_dir / "checksums.json"
+        with open(checksum_path, "a", encoding="utf-8") as file:
+            record = {"step": step, "file": path.name, "sha256": digest}
+            file.write(json.dumps(record) + "\n")
         return path
 
     def latest_checkpoint(self) -> Path | None:
@@ -143,6 +164,20 @@ class RunRecorder:
 
         checkpoints = sorted(self.checkpoint_dir.glob("step_*.pt"), key=step_of)
         return checkpoints[-1] if checkpoints else None
+
+    def _write_status(self, status: str, extra: dict | None = None) -> None:
+        """Write the current lifecycle state for operational inspection."""
+        payload = {
+            "status": status,
+            "updated_at": datetime.now(UTC).isoformat(),
+            "pid": os.getpid(),
+        }
+        if extra:
+            payload.update(extra)
+        temporary = self.run_dir / "run_status.json.tmp"
+        with open(temporary, "w", encoding="utf-8") as file:
+            json.dump(payload, file, indent=2)
+        temporary.replace(self.run_dir / "run_status.json")
 
     @staticmethod
     def _system_info() -> dict:

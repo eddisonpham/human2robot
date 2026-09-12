@@ -1,11 +1,10 @@
 # DynHand
 
-Demonstration-guided reinforcement learning for dexterous manipulation.
-Human hand demonstrations are retargeted onto a floating Allegro hand in
-MuJoCo and used to accelerate a Soft Actor-Critic trainer. The project
-answers one question: do human demonstrations plus physics-structured
-learned dynamics improve sample efficiency, stability, and generalization
-over RL from scratch?
+DynHand is a reproducible reinforcement learning and ML systems project for
+dexterous manipulation. The implemented foundation is a configuration-driven
+Soft Actor-Critic trainer with demonstration-guided learning on the standard
+Adroit relocate benchmark. The planned research extension evaluates
+physics-structured learned dynamics on a floating Allegro hand.
 
 The full build specification lives in `agents/`. Read `agents/00_INDEX.md`
 first; it defines the reading order.
@@ -42,18 +41,19 @@ bash scripts/setup_references.sh
 
 ## Usage
 
-Tier A validates the trainer on the standard Adroit hand relocate task
-with human demonstrations from Minari:
+Tier A is the implemented benchmark. It uses `AdroitHandRelocate-v1`
+with dense reward, 39 observations, 30 actions, and a 200-step episode
+horizon. The Minari dataset `D4RL/relocate/human-v2` uses the same
+environment specification and contains 25 episodes and 9,942 transitions.
+The exact local package versions are recorded in the lockfile and each run's
+manifest.
 
 ```bash
 uv run dynhand-train --config configs/tier_a_relocate.yaml --seed 0
 ```
 
-Tier B trains on the custom floating Allegro pickup environment:
-
-```bash
-uv run dynhand-train --config configs/tier_b_pickup.yaml --seed 0
-```
+Tier B is not yet implemented. Its configuration is retained as a planning
+placeholder and must not be used as a completed capability claim.
 
 Evaluate a checkpoint:
 
@@ -82,15 +82,26 @@ uv run python -c "from dynhand.evaluation.audit import audit_metrics; print(audi
 ## Project layout
 
 ```text
-src/dynhand/        Library code: config, environments, RL, dynamics, data, export
+src/dynhand/        Library code: config, environments, RL, evaluation
 configs/            YAML run configurations, validated against pydantic schemas
 tests/python/       pytest suite, coverage-gated at 90 percent
 scripts/            Setup and utility scripts
 data/               Raw datasets, processed trajectories, demonstration files
 results/            Experiment outputs: configs, metrics, checkpoints, plots
 references/         Cloned third-party repos (gitignored)
-agents/             Build specification, read-only
+agents/             Build specification and resume documentation
 ```
+
+## Scope status
+
+Implemented: Tier A SAC, BC initialization, Minari demonstration replay,
+checkpoint recovery, deterministic evaluation, metrics auditing, run locks,
+SB3 cross-check tooling, and reproducible local artifacts.
+
+In progress: clean multi-seed Tier A evidence and ONNX actor export.
+
+Planned: floating Allegro Tier B, retargeting, learned dynamics, the A-E
+ablation, robustness evaluation, and optional Rust inference serving.
 
 ## Development
 

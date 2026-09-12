@@ -16,7 +16,10 @@ check_run() {
     echo "status: not started"
     return
   fi
-  if [ -f "$log" ] && grep -q "Training complete" "$log"; then
+  if [ -f "$run_dir/run_status.json" ]; then
+    status=$(uv run --no-sync python -c "import json; print(json.load(open('$run_dir/run_status.json'))['status'])")
+    echo "status: ${status}"
+  elif [ -f "$log" ] && grep -q "Training complete" "$log"; then
     echo "status: complete"
   else
     echo "status: active or failed"

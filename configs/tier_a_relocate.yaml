@@ -1,6 +1,8 @@
 experiment_id: tier_a_relocate_cond_a
 env_id: AdroitHandRelocate-v1
 seed: 0
+# Verified with gymnasium-robotics 1.4.2: dense reward, 39 observations,
+# 30 actions, 200 maximum episode steps.
 condition: A
 total_env_steps: 1000000
 num_envs: 8

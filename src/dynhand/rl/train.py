@@ -6,6 +6,7 @@ augmentation is not implemented yet and raises NotImplementedError.
 """
 
 import argparse
+import random
 
 import numpy as np
 import torch
@@ -43,12 +44,37 @@ def _subsample(
     return {key: value[idx] for key, value in demos.items()}
 
 
+def _rng_state() -> dict:
+    """Capture Python, NumPy, and Torch RNG state for reproducible resume."""
+    state = {
+        "python": random.getstate(),
+        "numpy": np.random.get_state(),
+        "torch": torch.random.get_rng_state().cpu(),
+    }
+    if torch.cuda.is_available():
+        state["cuda"] = [item.cpu() for item in torch.cuda.get_rng_state_all()]
+    return state
+
+
+def _restore_rng_state(state: dict) -> None:
+    """Restore RNG state captured by a checkpoint."""
+    random.setstate(state["python"])
+    np.random.set_state(state["numpy"])
+    torch.random.set_rng_state(state["torch"].cpu())
+    if torch.cuda.is_available() and "cuda" in state:
+        torch.cuda.set_rng_state_all([item.cpu() for item in state["cuda"]])
+
+
 def _load_resume_checkpoint(path, sac, buffer, rng) -> int:
     """Restore trainer state from a checkpoint, return its global step."""
     checkpoint = torch.load(path, map_location=sac.device, weights_only=False)
     sac.load_state_dict(checkpoint["sac"])
     if checkpoint.get("buffer") is not None:
         buffer.load_state(checkpoint["buffer"])
+    if checkpoint.get("replay_rng") is not None:
+        rng.bit_generator.state = checkpoint["replay_rng"]
+    if checkpoint.get("rng") is not None:
+        _restore_rng_state(checkpoint["rng"])
     return int(checkpoint["global_step"])
 
 
@@ -192,6 +218,8 @@ def train(
                     "sac": sac.state_dict(),
                     "buffer": buffer.state_dict(),
                     "global_step": global_step,
+                    "replay_rng": rng.bit_generator.state,
+                    "rng": _rng_state(),
                 },
             )
 
@@ -202,11 +230,14 @@ def train(
             "sac": sac.state_dict(),
             "buffer": buffer.state_dict(),
             "global_step": global_step,
+            "replay_rng": rng.bit_generator.state,
+            "rng": _rng_state(),
         },
     )
     final_metrics = evaluate(sac, config.env_id, config.eval.episodes, config.seed)
     if last_eval_step != global_step:
         recorder.log_metrics(global_step, final_metrics)
+    recorder.mark_completed()
     writer.close()
     recorder.close()
     print(f"Training complete. Final checkpoint: {final}")

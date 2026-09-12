@@ -6,7 +6,7 @@ import torch
 from dynhand.config.schema import EvalConfig, ExperimentConfig, SACConfig
 from dynhand.envs.record import RunRecorder
 from dynhand.rl.replay import ReplayBuffer
-from dynhand.rl.train import _load_resume_checkpoint, train
+from dynhand.rl.train import _load_resume_checkpoint, _rng_state, train
 from dynhand.utils.seed import seed_everything
 
 
@@ -76,7 +76,13 @@ def test_load_resume_checkpoint_restores_sac(tmp_path) -> None:
     )
     recorder.save_checkpoint(
         500,
-        {"sac": sac.state_dict(), "buffer": buffer.state_dict(), "global_step": 500},
+        {
+            "sac": sac.state_dict(),
+            "buffer": buffer.state_dict(),
+            "global_step": 500,
+            "replay_rng": rng.bit_generator.state,
+            "rng": _rng_state(),
+        },
     )
     sac2 = SAC(
         3,
@@ -91,6 +97,8 @@ def test_load_resume_checkpoint_restores_sac(tmp_path) -> None:
     assert path is not None
     step = _load_resume_checkpoint(path, sac2, buffer2, rng)
     assert step == 500
+    checkpoint = torch.load(path, weights_only=False)
+    assert "rng" in checkpoint
     obs = np.zeros(3, dtype=np.float32)
     assert np.allclose(
         sac.act(obs, deterministic=True), sac2.act(obs, deterministic=True)

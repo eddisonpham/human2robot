@@ -51,8 +51,13 @@ def test_run_recorder_creates_manifest_files(tmp_path: Path) -> None:
     assert (recorder.run_dir / "git_commit.txt").exists()
     assert (recorder.run_dir / "system_info.json").exists()
     assert (recorder.run_dir / "metrics.jsonl").exists()
+    status = json.loads((recorder.run_dir / "run_status.json").read_text())
+    assert status["status"] == "running"
     saved = yaml.safe_load((recorder.run_dir / "config.yaml").read_text())
     assert saved["experiment_id"] == "recorder_test"
+    recorder.mark_completed()
+    status = json.loads((recorder.run_dir / "run_status.json").read_text())
+    assert status["status"] == "completed"
     recorder.close()
 
 
@@ -87,6 +92,8 @@ def test_run_recorder_saves_checkpoint(tmp_path: Path) -> None:
     assert path.exists()
     loaded = torch.load(path, weights_only=True)
     assert torch.equal(loaded["tensor"], torch.zeros(3))
+    checksums = (recorder.run_dir / "checkpoints" / "checksums.json").read_text()
+    assert '"step": 500' in checksums
     recorder.close()
 
 
