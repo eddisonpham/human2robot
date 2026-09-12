@@ -242,7 +242,7 @@ sb3 = [
 [package.metadata]
 requires-dist = [
     { name = "gymnasium", specifier = ">=1.0" },
-    { name = "gymnasium-robotics", specifier = ">=1.3" },
+    { name = "gymnasium-robotics", specifier = "==1.4.2" },
     { name = "minari", extras = ["hf", "hdf5"], specifier = ">=0.5" },
     { name = "mujoco", specifier = ">=3.3" },
     { name = "numpy", specifier = ">=1.26,<3" },
