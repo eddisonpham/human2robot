@@ -52,8 +52,10 @@ manifest.
 uv run dynhand-train --config configs/tier_a_relocate.yaml --seed 0
 ```
 
-Tier B is not yet implemented. Its configuration is retained as a planning
-placeholder and must not be used as a completed capability claim.
+Tier B is a registered floating Allegro pickup environment
+(`DynHand-AllegroPickup-v0`, 64 observations, 22 actions) whose training and
+demonstration pipeline remain in progress. Use
+`configs/tier_a_relocate*.yaml` for Tier A results.
 
 Evaluate a checkpoint:
 
@@ -94,14 +96,16 @@ agents/             Build specification and resume documentation
 
 ## Scope status
 
-Implemented: Tier A SAC, BC initialization, Minari demonstration replay,
-checkpoint recovery, deterministic evaluation, metrics auditing, run locks,
-SB3 cross-check tooling, and reproducible local artifacts.
+Implemented: Tier A SAC, BC initialization, Minari demonstration replay, the
+floating Allegro Tier B environment, deterministic ONNX export with parity
+and latency reporting, benchmark summaries, and the audited experiment
+infrastructure.
 
-In progress: clean multi-seed Tier A evidence and ONNX actor export.
+In progress: clean multi-seed Tier A evidence and completion of the
+dynamics-augmented conditions.
 
-Planned: floating Allegro Tier B, retargeting, learned dynamics, the A-E
-ablation, robustness evaluation, and optional Rust inference serving.
+Planned: residual physics-based dynamics, additional Tier B generalization
+cases, and the final multi-condition ablation curves.
 
 ## Development
 

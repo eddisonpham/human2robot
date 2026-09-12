@@ -25,7 +25,11 @@ def run_sb3_check(
     from stable_baselines3 import SAC
     from stable_baselines3.common.evaluation import evaluate_policy
     from stable_baselines3.common.monitor import Monitor
-    from stable_baselines3.common.vec_env import make_vec_env
+
+    try:
+        from stable_baselines3.common.env_util import make_vec_env
+    except ImportError:
+        from stable_baselines3.common.vec_env import make_vec_env
 
     from dynhand.config.schema import ExperimentConfig
     from dynhand.envs.record import RunRecorder
@@ -77,6 +81,7 @@ def run_sb3_check(
             }
             recorder.log_metrics(trained, last_metrics)
         model.save(str(recorder.run_dir / "sb3_sac"))
+        recorder.mark_completed()
         return last_metrics
     finally:
         if eval_env is not None:
@@ -91,6 +96,7 @@ def main() -> None:
     parser.add_argument("--config", required=True)
     parser.add_argument("--total-timesteps", type=int, default=None)
     parser.add_argument("--run-name", default=None)
+    parser.add_argument("--output-dir", default=None)
     args = parser.parse_args()
 
     from dynhand.config.loader import load_config
@@ -102,7 +108,7 @@ def main() -> None:
         total_timesteps=timesteps,
         seed=config.seed,
         num_envs=config.num_envs,
-        output_dir=config.results_dir,
+        output_dir=args.output_dir or config.results_dir,
         eval_interval_steps=config.eval.interval_steps,
         learning_starts=config.start_steps,
         batch_size=config.sac.batch_size,

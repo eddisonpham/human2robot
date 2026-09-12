@@ -6,18 +6,26 @@ from pathlib import Path
 import numpy as np
 
 from dynhand.evaluation.audit import audit_metrics
-from dynhand.evaluation.plots import read_metrics
 
 
 def _series(path: str | Path, metric: str) -> tuple[np.ndarray, np.ndarray]:
-    """Read and validate one metric stream."""
+    """Read and validate one evaluation metric stream."""
     report = audit_metrics(path, metric=metric)
     if not report.healthy:
         raise ValueError(f"unhealthy metrics stream: {path}: {report}")
-    data = read_metrics(path)
-    if metric not in data or "step" not in data:
-        raise KeyError(f"missing {metric} or step in {path}")
-    return data["step"].astype(float), data[metric].astype(float)
+    steps, values = [], []
+    with Path(path).open(encoding="utf-8") as file:
+        for line in file:
+            text = line.strip()
+            if not text:
+                continue
+            record = __import__("json").loads(text)
+            if metric in record:
+                steps.append(float(record["step"]))
+                values.append(float(record[metric]))
+    if not steps:
+        raise KeyError(f"missing {metric} in {path}")
+    return np.asarray(steps), np.asarray(values)
 
 
 def area_under_curve(path: str | Path, metric: str = "eval_return_mean") -> float:

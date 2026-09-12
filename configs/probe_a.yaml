@@ -1,0 +1,15 @@
+experiment_id: phase1_probe_a
+env_id: AdroitHandRelocate-v1
+seed: 0
+condition: A
+total_env_steps: 5000
+num_envs: 2
+start_steps: 100
+checkpoint_interval: 2500
+sac:
+  batch_size: 32
+  buffer_size: 10000
+  hidden_dim: 64
+eval:
+  interval_steps: 1000
+  episodes: 2
