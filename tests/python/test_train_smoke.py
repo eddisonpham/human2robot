@@ -44,11 +44,11 @@ def test_train_condition_a_end_to_end(tmp_path) -> None:
     assert len(checkpoints) >= 1
 
 
-def test_train_rejects_dynamics_conditions(tmp_path) -> None:
-    config = make_smoke_config(tmp_path, condition="C")
+def test_train_rejects_residual_dynamics_until_physics_provider(tmp_path) -> None:
+    config = make_smoke_config(tmp_path, condition="D")
     import pytest
 
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(NotImplementedError, match="physics provider"):
         train(config)
 
 

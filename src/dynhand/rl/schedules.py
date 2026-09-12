@@ -19,6 +19,7 @@ def sample_mixed(
     rng: np.random.Generator,
 ) -> dict[str, np.ndarray]:
     """Draw a minibatch with ratio fraction demo transitions and the rest online."""
+    del rng
     n_demo = int(round(batch_size * ratio))
     n_main = batch_size - n_demo
     parts = []
@@ -29,3 +30,28 @@ def sample_mixed(
     if len(parts) == 1:
         return parts[0]
     return {k: np.concatenate([p[k] for p in parts], axis=0) for k in parts[0]}
+
+
+def sample_three(
+    online_buffer,
+    demo_buffer,
+    synthetic_buffer,
+    batch_size: int,
+    demo_ratio_value: float,
+    synthetic_ratio: float,
+) -> dict[str, np.ndarray]:
+    """Sample online, demonstration, and synthetic transitions."""
+    n_demo = int(round(batch_size * demo_ratio_value)) if demo_buffer else 0
+    remaining = batch_size - n_demo
+    n_synthetic = int(round(remaining * synthetic_ratio)) if synthetic_buffer else 0
+    n_online = batch_size - n_demo - n_synthetic
+    parts = []
+    if n_online:
+        parts.append(online_buffer.sample(n_online))
+    if n_demo:
+        parts.append(demo_buffer.sample(n_demo))
+    if n_synthetic:
+        parts.append(synthetic_buffer.sample(n_synthetic))
+    return {
+        key: np.concatenate([part[key] for part in parts], axis=0) for key in parts[0]
+    }

@@ -1,8 +1,9 @@
 """Training entrypoint for all ablation conditions.
 
 One trainer serves conditions A through E; the active condition is set
-entirely by the config file. Condition C/D/E model-based rollout
-augmentation is not implemented yet and raises NotImplementedError.
+entirely by the config file. Black-box model-based augmentation is supported;
+residual augmentation remains blocked until a nominal physics transition
+provider is configured.
 """
 
 import argparse
@@ -14,6 +15,8 @@ from torch.utils.tensorboard import SummaryWriter
 
 from dynhand.config.loader import load_config
 from dynhand.config.schema import ExperimentConfig
+from dynhand.dynamics.ensemble import DynamicsEnsemble
+from dynhand.dynamics.rollout import synthetic_transitions
 from dynhand.envs.record import RunRecorder
 from dynhand.envs.vec import make_vec_env
 from dynhand.evaluation.evaluate import evaluate
@@ -21,7 +24,7 @@ from dynhand.rl.bc import BCTrainer
 from dynhand.rl.demo import load_minari_transitions
 from dynhand.rl.replay import ReplayBuffer
 from dynhand.rl.sac import SAC
-from dynhand.rl.schedules import demo_ratio, sample_mixed
+from dynhand.rl.schedules import demo_ratio, sample_mixed, sample_three
 from dynhand.utils.seed import seed_everything, set_torch_threads, worker_seed
 
 
@@ -85,9 +88,9 @@ def train(
     run_name: str | None = None,
 ) -> dict[str, float]:
     """Run one training job from a validated config, return final metrics."""
-    if config.dynamics_aug.enabled:
+    if config.dynamics_aug.enabled and config.dynamics_aug.mode == "residual":
         raise NotImplementedError(
-            "Dynamics-model augmentation (conditions C, D, E) is a later phase"
+            "Residual augmentation requires a configured nominal physics provider"
         )
     if run_name is not None:
         config.experiment_id = run_name
@@ -123,6 +126,21 @@ def train(
             start_step = _load_resume_checkpoint(latest, sac, buffer, rng)
             print(f"Resumed from {latest} at step {start_step}")
 
+    dynamics_model = None
+    synthetic_buffer = None
+    dynamics_start = max(config.start_steps, config.sac.batch_size)
+    if config.dynamics_aug.enabled:
+        dynamics_model = DynamicsEnsemble(
+            obs_dim,
+            act_dim,
+            ensemble_size=config.dynamics_aug.ensemble_size,
+            mode=config.dynamics_aug.mode,
+            hidden_dim=config.sac.hidden_dim,
+            device=device,
+        )
+        synthetic_buffer = ReplayBuffer(
+            obs_dim, act_dim, config.sac.buffer_size // 4, rng
+        )
     demo_buffer = None
     if config.demo.enabled:
         demos = _demo_transitions(config, config.seed)
@@ -181,19 +199,71 @@ def train(
         obs = next_obs
         global_step += config.num_envs
 
+        if (
+            dynamics_model is not None
+            and len(buffer) >= dynamics_start
+            and global_step % config.dynamics_aug.retrain_every_steps < config.num_envs
+        ):
+            model_size = min(len(buffer), 10_000)
+            model_data = buffer.sample(model_size)
+            dynamics_model.fit(
+                model_data["obs"],
+                model_data["acts"],
+                model_data["next_obs"],
+                rewards=model_data["rewards"],
+                epochs=2,
+                batch_size=config.dynamics_aug.batch_size,
+                seed=config.seed + global_step,
+            )
+            synthetic = synthetic_transitions(
+                dynamics_model,
+                model_data["obs"][: config.sac.batch_size],
+                sac.act(model_data["obs"][: config.sac.batch_size]),
+                member=global_step % config.dynamics_aug.ensemble_size,
+            )
+            synthetic_buffer.add_batch(
+                synthetic["obs"],
+                synthetic["acts"],
+                synthetic["next_obs"],
+                synthetic["rewards"],
+                synthetic["dones"],
+            )
+            recorder.log_metrics(
+                global_step,
+                {"dynamics_model_transitions": float(len(synthetic["obs"]))},
+            )
+
         if len(buffer) >= config.sac.batch_size:
             for _ in range(config.sac.utd_ratio):
-                if demo_buffer is not None:
-                    ratio = demo_ratio(
+                ratio = (
+                    demo_ratio(
                         global_step,
                         config.demo.demo_ratio_start,
                         config.demo.demo_ratio_anneal_steps,
                     )
-                    batch = sample_mixed(
-                        buffer, demo_buffer, config.sac.batch_size, ratio, rng
+                    if demo_buffer is not None
+                    else 0.0
+                )
+                batch = (
+                    sample_three(
+                        buffer,
+                        demo_buffer,
+                        synthetic_buffer if len(synthetic_buffer or []) else None,
+                        config.sac.batch_size,
+                        ratio,
+                        config.dynamics_aug.synthetic_ratio
+                        if synthetic_buffer is not None
+                        else 0.0,
                     )
-                else:
-                    batch = buffer.sample(config.sac.batch_size)
+                    if dynamics_model is not None
+                    else (
+                        sample_mixed(
+                            buffer, demo_buffer, config.sac.batch_size, ratio, rng
+                        )
+                        if demo_buffer is not None
+                        else buffer.sample(config.sac.batch_size)
+                    )
+                )
                 metrics = sac.update(batch)
             if global_step % 1000 < config.num_envs:
                 recorder.log_metrics(global_step, metrics)

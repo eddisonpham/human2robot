@@ -20,7 +20,16 @@ def dataset(size: int = 256, state_dim: int = 4, action_dim: int = 2):
 def test_blackbox_ensemble_learns_transition_and_rollout() -> None:
     states, actions, next_states, _ = dataset()
     model = DynamicsEnsemble(4, 2, ensemble_size=2, hidden_dim=32)
-    losses = model.fit(states, actions, next_states, epochs=100, batch_size=64)
+    rewards = actions[:, 0] - actions[:, 1]
+    losses = model.fit(
+        states,
+        actions,
+        next_states,
+        rewards=rewards,
+        epochs=100,
+        batch_size=64,
+    )
+
     assert len(losses) == 2
     metrics = model.evaluate(states, actions, next_states, horizons=(1, 5))
     assert metrics.one_step_mse < 0.05
@@ -40,14 +49,14 @@ def test_residual_requires_physics_deltas() -> None:
 def test_synthetic_transitions_are_replay_compatible() -> None:
     states, actions, next_states, _ = dataset(size=16)
     model = DynamicsEnsemble(4, 2, ensemble_size=1, hidden_dim=16)
-    model.fit(states, actions, next_states, epochs=2)
-    batch = synthetic_transitions(
-        model,
-        states[:8],
-        actions[:8],
-        np.ones(8),
-        np.zeros(8),
+    model.fit(
+        states,
+        actions,
+        next_states,
+        rewards=actions[:, 0] - actions[:, 1],
+        epochs=2,
     )
+    batch = synthetic_transitions(model, states[:8], actions[:8])
     assert set(batch) == {"obs", "acts", "next_obs", "rewards", "dones"}
     assert batch["next_obs"].shape == (8, 4)
     assert batch["rewards"].shape == (8, 1)
