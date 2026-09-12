@@ -61,6 +61,7 @@ dynhand-train = "dynhand.rl.train:main"
 dynhand-eval = "dynhand.evaluation.cli:main"
 dynhand-plot = "dynhand.evaluation.plot_cli:main"
 dynhand-sb3-check = "dynhand.evaluation.sb3_check:main"
+dynhand-export = "dynhand.export.onnx:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests/python"]
