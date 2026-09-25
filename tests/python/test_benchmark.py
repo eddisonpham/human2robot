@@ -4,7 +4,11 @@ import json
 
 import pytest
 
-from dynhand.evaluation.benchmark import area_under_curve, summarize_runs, write_summary
+from human2robot.evaluation.benchmark import (
+    area_under_curve,
+    summarize_runs,
+    write_summary,
+)
 
 
 def write_metrics(path, values):

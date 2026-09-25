@@ -3,7 +3,7 @@
 import subprocess
 from pathlib import Path
 
-from dynhand.utils.git_info import get_git_commit
+from human2robot.utils.git_info import get_git_commit
 
 
 def _git(cwd: Path, *args: str) -> None:

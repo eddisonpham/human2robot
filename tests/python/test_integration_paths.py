@@ -7,10 +7,15 @@ import numpy as np
 import torch
 import yaml
 
-from dynhand.config.schema import DemoConfig, EvalConfig, ExperimentConfig, SACConfig
-from dynhand.rl.bc import BCTrainer
-from dynhand.rl.sac import SAC
-from dynhand.rl.train import train
+from human2robot.config.schema import (
+    DemoConfig,
+    EvalConfig,
+    ExperimentConfig,
+    SACConfig,
+)
+from human2robot.rl.bc import BCTrainer
+from human2robot.rl.sac import SAC
+from human2robot.rl.train import train
 
 
 def make_demo_arrays(n: int = 64) -> dict[str, np.ndarray]:
@@ -25,7 +30,7 @@ def make_demo_arrays(n: int = 64) -> dict[str, np.ndarray]:
 
 
 def test_train_condition_b_demo_path(tmp_path, monkeypatch) -> None:
-    train_mod = importlib.import_module("dynhand.rl.train")
+    train_mod = importlib.import_module("human2robot.rl.train")
 
     monkeypatch.setattr(
         train_mod, "load_minari_transitions", lambda dataset_id: make_demo_arrays()
@@ -79,7 +84,7 @@ def test_train_checkpoint_written_mid_run(tmp_path) -> None:
 
 
 def test_eval_cli_prints_json(tmp_path, monkeypatch, capsys) -> None:
-    from dynhand.evaluation.cli import main
+    from human2robot.evaluation.cli import main
 
     sac = SAC(
         3,
@@ -105,7 +110,13 @@ def test_eval_cli_prints_json(tmp_path, monkeypatch, capsys) -> None:
     monkeypatch.setattr(
         sys,
         "argv",
-        ["dynhand-eval", "--config", str(config_path), "--checkpoint", str(checkpoint)],
+        [
+            "human2robot-eval",
+            "--config",
+            str(config_path),
+            "--checkpoint",
+            str(checkpoint),
+        ],
     )
     main()
     out = capsys.readouterr().out

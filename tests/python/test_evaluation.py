@@ -7,10 +7,10 @@ import numpy as np
 import pytest
 import yaml
 
-from dynhand.config.schema import ExperimentConfig
-from dynhand.envs.record import RunLock, RunRecorder
-from dynhand.evaluation.audit import audit_metrics
-from dynhand.evaluation.evaluate import build_single_env, evaluate
+from human2robot.config.schema import ExperimentConfig
+from human2robot.envs.record import RunLock, RunRecorder
+from human2robot.evaluation.audit import audit_metrics
+from human2robot.evaluation.evaluate import build_single_env, evaluate
 
 
 def test_build_single_env_flattens_dict_obs() -> None:
@@ -25,8 +25,8 @@ def test_build_single_env_flattens_dict_obs() -> None:
 
 def test_evaluate_runs_deterministic_episodes() -> None:
     torch = __import__("torch")
-    from dynhand.config.schema import SACConfig
-    from dynhand.rl.sac import SAC
+    from human2robot.config.schema import SACConfig
+    from human2robot.rl.sac import SAC
 
     config = SACConfig(hidden_dim=32)
     sac = SAC(

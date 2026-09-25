@@ -2,7 +2,7 @@
 
 import pytest
 
-from dynhand.evaluation.robustness import generalization_split
+from human2robot.evaluation.robustness import generalization_split
 
 
 def test_generalization_split_detects_leakage() -> None:

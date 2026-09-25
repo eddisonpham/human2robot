@@ -3,8 +3,8 @@
 import numpy as np
 import pytest
 
-from dynhand.dynamics.ensemble import DynamicsEnsemble
-from dynhand.dynamics.rollout import synthetic_transitions
+from human2robot.dynamics.ensemble import DynamicsEnsemble
+from human2robot.dynamics.rollout import synthetic_transitions
 
 
 def dataset(size: int = 256, state_dim: int = 4, action_dim: int = 2):

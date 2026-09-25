@@ -26,7 +26,7 @@ check_run() {
   fi
   uv run --no-sync python - "$run_dir" <<'PY'
 import sys
-from dynhand.evaluation.audit import summarize
+from human2robot.evaluation.audit import summarize
 
 report = summarize(sys.argv[1])
 print(f"metrics: eval_lines={report.eval_lines} healthy={report.healthy}")

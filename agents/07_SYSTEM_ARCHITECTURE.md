@@ -57,7 +57,7 @@ inference time at all.
 ## 2. Repo layout
 
 ```text
-dynhand/
+human2robot/
 ├── agents/                      # this planning spec (read-only reference)
 ├── references/                  # cloned third-party repos, see 03_EXISTING_REPOS_TO_CLONE.md
 ├── configs/

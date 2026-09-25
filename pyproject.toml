@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "dynhand"
+name = "human2robot"
 version = "0.1.0"
 description = "Physics-grounded, demonstration-guided RL for dexterous manipulation"
 readme = "README.md"
@@ -22,6 +22,8 @@ dependencies = [
     "tensorboard>=2.16",
     "onnx>=1.16",
     "onnxruntime>=1.18",
+    "gdown>=6.4.0",
+    "ninja>=1.13.2",
 ]
 
 # NOTE: dex-retargeting (needed only for Tier B retargeting, Phase 4) is
@@ -54,23 +56,23 @@ required-environments = ["sys_platform == 'win32' and platform_machine == 'AMD64
 torch = { index = "pytorch-cu128" }
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/dynhand"]
+packages = ["src/human2robot"]
 
 [project.scripts]
-dynhand-train = "dynhand.rl.train:main"
-dynhand-eval = "dynhand.evaluation.cli:main"
-dynhand-plot = "dynhand.evaluation.plot_cli:main"
-dynhand-sb3-check = "dynhand.evaluation.sb3_check:main"
-dynhand-export = "dynhand.export.onnx:main"
-dynhand-benchmark = "dynhand.evaluation.benchmark:main"
+human2robot-train = "human2robot.rl.train:main"
+human2robot-eval = "human2robot.evaluation.cli:main"
+human2robot-plot = "human2robot.evaluation.plot_cli:main"
+human2robot-sb3-check = "human2robot.evaluation.sb3_check:main"
+human2robot-export = "human2robot.export.onnx:main"
+human2robot-benchmark = "human2robot.evaluation.benchmark:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests/python"]
-addopts = "--cov=dynhand --cov-report=term-missing --cov-fail-under=90 -q -m 'not network'"
+addopts = "--cov=human2robot --cov-report=term-missing --cov-fail-under=90 -q -m 'not network'"
 markers = ["network: requires internet access to download datasets (deselected by default)"]
 
 [tool.coverage.run]
-source = ["src/dynhand"]
+source = ["src/human2robot"]
 
 [tool.ruff]
 line-length = 88

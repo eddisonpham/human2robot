@@ -3,8 +3,8 @@
 import numpy as np
 import pytest
 
-from dynhand.rl.demo import _flatten_obs, seed_replay_buffer
-from dynhand.rl.replay import ReplayBuffer
+from human2robot.rl.demo import _flatten_obs, seed_replay_buffer
+from human2robot.rl.replay import ReplayBuffer
 
 
 class FakeEpisode:
@@ -56,7 +56,7 @@ def test_seed_replay_buffer_counts_and_content() -> None:
 
 
 def test_load_minari_transitions_with_monkeypatched_minari(monkeypatch) -> None:
-    import dynhand.rl.demo as demo_module
+    import human2robot.rl.demo as demo_module
 
     episodes = [FakeEpisode(length=6, obs_dim=3, act_dim=2, seed=s) for s in range(2)]
     fake_minari = type("M", (), {})()

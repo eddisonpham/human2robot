@@ -2,8 +2,8 @@
 
 import numpy as np
 
-from dynhand.rl.replay import ReplayBuffer
-from dynhand.rl.schedules import demo_ratio, sample_mixed
+from human2robot.rl.replay import ReplayBuffer
+from human2robot.rl.schedules import demo_ratio, sample_mixed
 
 
 def make_rng() -> np.random.Generator:

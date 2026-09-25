@@ -3,13 +3,13 @@
 import numpy as np
 import pytest
 
-from dynhand.data.allegro_demos import (
+from human2robot.data.allegro_demos import (
     generate_synthetic_demos,
     load_demo_npz,
     validate_open_loop_replay,
 )
-from dynhand.data.processing import demo_actions, differentiate, smooth
-from dynhand.data.schema import DemoTrajectory
+from human2robot.data.processing import demo_actions, differentiate, smooth
+from human2robot.data.schema import DemoTrajectory
 
 
 def test_smooth_and_differentiate() -> None:

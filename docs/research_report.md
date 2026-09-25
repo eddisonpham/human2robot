@@ -1,4 +1,4 @@
-# DynHand: Demonstration-Guided SAC for Dexterous Manipulation — Research Report (DRAFT)
+# Human2Robot: Demonstration-Guided SAC for Dexterous Manipulation — Research Report (DRAFT)
 
 > **Status:** Probe-validated draft. 1M x 3-seed Phase 1 queue is running (7 jobs, ~14h).
 > This report scaffolds the full paper from 5k-step probes + verified infrastructure.
@@ -6,7 +6,7 @@
 
 ## Abstract
 
-DynHand asks: do human demonstrations improve SAC sample efficiency on `AdroitHandRelocate-v1` before we trust the same recipe on a novel floating Allegro Tier B? On 5k-step probes (hidden_dim 64, 2 envs, eval every 1k, seed 0), Condition B (BC init + 0.5→0 annealed demo replay from `D4RL/relocate/human-v2`) reaches **19.05** vs **7.05** for plain SAC (A) and **8.41** for SB3 — a **2.7x final-return and 2.08x AUC** gain. SB3 cross-check confirms no order-of-magnitude divergence. These are existence proofs, not the final 1M claim; the queue will replace them with 3-seed, CI-banded curves.
+Human2Robot asks: do human demonstrations improve SAC sample efficiency on `AdroitHandRelocate-v1` before we trust the same recipe on a novel floating Allegro Tier B? On 5k-step probes (hidden_dim 64, 2 envs, eval every 1k, seed 0), Condition B (BC init + 0.5→0 annealed demo replay from `D4RL/relocate/human-v2`) reaches **19.05** vs **7.05** for plain SAC (A) and **8.41** for SB3 — a **2.7x final-return and 2.08x AUC** gain. SB3 cross-check confirms no order-of-magnitude divergence. These are existence proofs, not the final 1M claim; the queue will replace them with 3-seed, CI-banded curves.
 
 ## 1. Introduction
 
@@ -17,7 +17,7 @@ Dexterous manipulation needs sample-efficient, reproducible RL. We de-risk by va
 ## 2. Method
 
 ### 2.1 Environment
-Tier A: `AdroitHandRelocate-v1` (dense reward, gymnasium-robotics==1.4.2 pinned, 39 obs / 30 action, T=200). Tier B: `DynHand-AllegroPickup-v0` (registered, 64 obs / 22 action — 6 base velocity + 16 finger position targets — 10 mujoco substeps, 10k-step stability proven).
+Tier A: `AdroitHandRelocate-v1` (dense reward, gymnasium-robotics==1.4.2 pinned, 39 obs / 30 action, T=200). Tier B: `Human2Robot-AllegroPickup-v0` (registered, 64 obs / 22 action — 6 base velocity + 16 finger position targets — 10 mujoco substeps, 10k-step stability proven).
 
 ### 2.2 Algorithm (agents/05)
 Forked CleanRL SAC: tanh-Gaussian actor MLP[256,256] ReLU, twin Q[256,256], Polyak 0.005, auto-α, γ=0.99, buffer 1M, batch 256, UTD=1. Demo integration per Vecerik et al. 2017 / Nair et al. 2018 (correct for off-policy SAC — not literal DAPG which is NPG/on-policy): (1) BC L2 pretrain on demo (o,a) with holdout early stopping (patience 10), (2) demo transitions seeded in replay, (3) demo ratio ρ 0.5→0 linearly over 30% training. No reward shaping.
@@ -33,15 +33,15 @@ Pydantic YAML (extra=forbid), per-worker seed `seed+i`, git SHA + dirty flag, `s
 ### 3.1 Phase 1 Probe (validated, N=1)
 - **A:** `configs/probe_a.yaml` — 5k steps, 2 envs
 - **B:** `configs/probe_b.yaml` — same + human-v2 (25ep/9942 trans), bc_epochs=3
-- **SB3:** `dynhand-sb3-check` with matched seed/buffer/batch/learning_starts/UTD, periodic eval
+- **SB3:** `human2robot-sb3-check` with matched seed/buffer/batch/learning_starts/UTD, periodic eval
 
 Artifacts: `results/probes/phase1_probe_{A2,B2,SB3}/` all `healthy=true` (5 eval lines each), `results/probes/comparison.png`.
 
 ### 3.2 Full Phase 1 (running)
-`scripts/queue_phase1.sh` sequential, fail-closed, `--resume`, `run_status.json` driven: B0→A0→SB3→A1→B1→A2→B2. Each 1M, 8 envs, eval 10k×5ep. Will produce `results/plots/learning_curves.png` via `dynhand-plot` and `results/analysis/benchmark_summary.json` via `dynhand-benchmark` (evaluation-only AUC).
+`scripts/queue_phase1.sh` sequential, fail-closed, `--resume`, `run_status.json` driven: B0→A0→SB3→A1→B1→A2→B2. Each 1M, 8 envs, eval 10k×5ep. Will produce `results/plots/learning_curves.png` via `human2robot-plot` and `results/analysis/benchmark_summary.json` via `human2robot-benchmark` (evaluation-only AUC).
 
 ### 3.3 Tier B Pipeline (next)
-`src/dynhand/envs/allegro.py` ready; plan `src/dynhand/data/` loaders (DexYCB/ARCTIC/GRAB), Savitzky-Golay smoothing + central-diff velocities, `dex-retargeting` SeqRetargeting call, NPZ schema per agents/08§5, open-loop replay validation ≥90%, then 5-condition ablation + domain-randomization robustness.
+`src/human2robot/envs/allegro.py` ready; plan `src/human2robot/data/` loaders (DexYCB/ARCTIC/GRAB), Savitzky-Golay smoothing + central-diff velocities, `dex-retargeting` SeqRetargeting call, NPZ schema per agents/08§5, open-loop replay validation ≥90%, then 5-condition ablation + domain-randomization robustness.
 
 ## 4. Results (Probe — preliminary, honest)
 
@@ -69,8 +69,8 @@ Residual dynamics with nominal MuJoCo baseline, Tier B 100-demo NPZ generation +
 uv sync --group sb3
 bash scripts/queue_phase1.sh          # full 1M queue
 bash scripts/status_tier_a.sh        # audit + checkpoint status
-uv run dynhand-plot --runs "A=results/tier_a_relocate_seed0,B=results/tier_a_relocate_demo_seed0" --out results/plots/learning_curves.png
-uv run dynhand-benchmark --group A=results/tier_a_relocate_seed0 --group B=results/tier_a_relocate_demo_seed0 --out results/analysis/summary.json
+uv run human2robot-plot --runs "A=results/tier_a_relocate_seed0,B=results/tier_a_relocate_demo_seed0" --out results/plots/learning_curves.png
+uv run human2robot-benchmark --group A=results/tier_a_relocate_seed0 --group B=results/tier_a_relocate_demo_seed0 --out results/analysis/summary.json
 ```
 
 ---

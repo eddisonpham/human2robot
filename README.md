@@ -1,13 +1,18 @@
-# DynHand
+# Human2Robot
 
-DynHand is a reproducible reinforcement learning and ML systems project for
-dexterous manipulation. The implemented foundation is a configuration-driven
-Soft Actor-Critic trainer with demonstration-guided learning on the standard
-Adroit relocate benchmark. The planned research extension evaluates
-physics-structured learned dynamics on a floating Allegro hand.
+Human2Robot (formerly DynHand) is a reproducible reinforcement learning and
+ML systems project for dexterous manipulation, extended with a C++
+trajectory-optimization subsystem that turns retargeted human hand motions
+into constraint-aware robot demonstrations. The implemented foundation is a
+configuration-driven Soft Actor-Critic trainer with demonstration-guided
+learning on the standard Adroit relocate benchmark, a floating Allegro hand
+environment, and a learned dynamics ensemble. The C++ subsystem validates,
+projects, and optimizes retargeted joint trajectories, then hands them back
+for MuJoCo replay and downstream learning experiments.
 
 The full build specification lives in `agents/`. Read `agents/00_INDEX.md`
-first; it defines the reading order.
+first; it defines the reading order. The C++ extension spec lives in
+`docs/HANDOFF_RESPONSE.md`; its current status in `cpp/README.md`.
 
 ## Hardware
 
@@ -49,18 +54,18 @@ The exact local package versions are recorded in the lockfile and each run's
 manifest.
 
 ```bash
-uv run dynhand-train --config configs/tier_a_relocate.yaml --seed 0
+uv run human2robot-train --config configs/tier_a_relocate.yaml --seed 0
 ```
 
 Tier B is a registered floating Allegro pickup environment
-(`DynHand-AllegroPickup-v0`, 64 observations, 22 actions) whose training and
+(`Human2Robot-AllegroPickup-v0`, 64 observations, 22 actions) whose training and
 demonstration pipeline remain in progress. Use
 `configs/tier_a_relocate*.yaml` for Tier A results.
 
 Evaluate a checkpoint:
 
 ```bash
-uv run dynhand-eval --config configs/tier_a_relocate.yaml --checkpoint results/<run>/checkpoints/final.pt
+uv run human2robot-eval --config configs/tier_a_relocate.yaml --checkpoint results/<run>/checkpoints/final.pt
 ```
 
 Run names must be unique per seed. The recorder takes an operating-system
@@ -77,16 +82,19 @@ The queue runs jobs sequentially, stops on the first failure, and records
 separate output for each seed. Audit a metrics stream before plotting:
 
 ```bash
-uv run python -c "from dynhand.evaluation.audit import audit_metrics; print(audit_metrics('results/<run>/metrics.jsonl'))"
+uv run python -c "from human2robot.evaluation.audit import audit_metrics; print(audit_metrics('results/<run>/metrics.jsonl'))"
 ```
 
 
 ## Project layout
 
 ```text
-src/dynhand/        Library code: config, environments, RL, evaluation
+src/human2robot/    Library code: config, environments, RL, evaluation
+cpp/                C++20 trajectory library (h2r_traj), tests, benchmarks
+src/human2robot/cpp_bindings/  pybind11 module exposing the C++ optimizer
 configs/            YAML run configurations, validated against pydantic schemas
 tests/python/       pytest suite, coverage-gated at 90 percent
+tests/cpp/          Python-side integration tests for the C++ bindings
 scripts/            Setup and utility scripts
 data/               Raw datasets, processed trajectories, demonstration files
 results/            Experiment outputs: configs, metrics, checkpoints, plots
@@ -98,11 +106,16 @@ agents/             Build specification and resume documentation
 
 Implemented: Tier A SAC, BC initialization, Minari demonstration replay, the
 floating Allegro Tier B environment, deterministic ONNX export with parity
-and latency reporting, benchmark summaries, and the audited experiment
-infrastructure.
+and latency reporting, benchmark summaries, the audited experiment
+infrastructure, and the C++ trajectory-optimization subsystem
+(`cpp/`, 57 tests) with its Python pipeline (`human2robot.optimization`).
+The pipeline optimized 100 retargeted demonstrations with 100/100
+convergence, reducing max jerk 44 percent and jerk-based smoothness cost 93
+percent while preserving tracking, and optimized demos replay cleanly in
+MuJoCo (see `results/trajectory_optimization/report.json`).
 
-In progress: clean multi-seed Tier A evidence and completion of the
-dynamics-augmented conditions.
+In progress: real DexYCB retargeting (subject data downloading via
+`scripts/download_dexycb.sh`) and clean multi-seed Tier A evidence.
 
 Planned: residual physics-based dynamics, additional Tier B generalization
 cases, and the final multi-condition ablation curves.

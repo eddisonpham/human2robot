@@ -2,13 +2,13 @@
 
 import json
 
-from dynhand.config.schema import (
+from human2robot.config.schema import (
     DynamicsAugConfig,
     EvalConfig,
     ExperimentConfig,
     SACConfig,
 )
-from dynhand.rl.train import train
+from human2robot.rl.train import train
 
 
 def test_condition_c_generates_synthetic_transitions(tmp_path) -> None:

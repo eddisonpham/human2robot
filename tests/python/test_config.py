@@ -5,9 +5,9 @@ from pathlib import Path
 import pytest
 import yaml
 
-from dynhand.config.conditions import CONDITION_FLAGS, apply_condition
-from dynhand.config.loader import load_config
-from dynhand.config.schema import DemoConfig, DynamicsAugConfig, ExperimentConfig
+from human2robot.config.conditions import CONDITION_FLAGS, apply_condition
+from human2robot.config.loader import load_config
+from human2robot.config.schema import DemoConfig, DynamicsAugConfig, ExperimentConfig
 
 
 def test_defaults_are_valid() -> None:

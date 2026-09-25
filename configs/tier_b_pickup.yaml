@@ -1,6 +1,6 @@
 experiment_id: tier_b_pickup_cond_a
 # Not runnable until the Phase 2 Allegro environment is implemented.
-env_id: DynHand-AllegroPickup-v0
+env_id: Human2Robot-AllegroPickup-v0
 seed: 0
 condition: A
 total_env_steps: 2000000

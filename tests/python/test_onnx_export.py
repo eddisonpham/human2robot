@@ -3,9 +3,9 @@
 import numpy as np
 import torch
 
-from dynhand.config.schema import SACConfig
-from dynhand.export.onnx import benchmark_latency, export_actor, validate_parity
-from dynhand.rl.sac import SAC
+from human2robot.config.schema import SACConfig
+from human2robot.export.onnx import benchmark_latency, export_actor, validate_parity
+from human2robot.rl.sac import SAC
 
 
 def make_actor():

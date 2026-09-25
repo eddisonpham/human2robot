@@ -3,11 +3,11 @@
 import numpy as np
 import torch
 
-from dynhand.config.schema import EvalConfig, ExperimentConfig, SACConfig
-from dynhand.envs.record import RunRecorder
-from dynhand.rl.replay import ReplayBuffer
-from dynhand.rl.train import _load_resume_checkpoint, _rng_state, train
-from dynhand.utils.seed import seed_everything
+from human2robot.config.schema import EvalConfig, ExperimentConfig, SACConfig
+from human2robot.envs.record import RunRecorder
+from human2robot.rl.replay import ReplayBuffer
+from human2robot.rl.train import _load_resume_checkpoint, _rng_state, train
+from human2robot.utils.seed import seed_everything
 
 
 def make_config(
@@ -56,8 +56,8 @@ def test_buffer_load_state_rejects_shape_mismatch() -> None:
 
 
 def test_load_resume_checkpoint_restores_sac(tmp_path) -> None:
-    from dynhand.config.schema import SACConfig
-    from dynhand.rl.sac import SAC
+    from human2robot.config.schema import SACConfig
+    from human2robot.rl.sac import SAC
 
     seed_everything(0)
     sac = SAC(

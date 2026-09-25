@@ -2,7 +2,7 @@
 
 import pytest
 
-from dynhand.utils.seed import seed_everything
+from human2robot.utils.seed import seed_everything
 
 
 @pytest.fixture(autouse=True)

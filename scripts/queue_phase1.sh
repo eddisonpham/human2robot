@@ -10,7 +10,7 @@ run_job() {
   local log="results/logs/${name}.log"
   local exit_code
   echo "[$(date +%H:%M:%S)] starting ${name}"
-  uv run dynhand-train --config "$config" --seed "$seed" --run-name "$name" --resume \
+  uv run human2robot-train --config "$config" --seed "$seed" --run-name "$name" --resume \
     >> "$log" 2>&1
   exit_code=$?
   echo "[$(date +%H:%M:%S)] finished ${name} with exit code ${exit_code}"
@@ -24,7 +24,7 @@ run_job configs/tier_a_relocate_demo.yaml 0 tier_a_relocate_demo_seed0
 run_job configs/tier_a_relocate.yaml 0 tier_a_relocate_seed0
 
 if uv run --no-sync python -c "import stable_baselines3" 2>/dev/null; then
-  uv run dynhand-sb3-check \
+  uv run human2robot-sb3-check \
     --config configs/tier_a_relocate.yaml \
     --run-name tier_a_sb3_seed0 \
     >> results/logs/tier_a_sb3_seed0.log 2>&1

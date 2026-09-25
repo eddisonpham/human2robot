@@ -2,14 +2,14 @@
 
 import numpy as np
 
-from dynhand.config.schema import (
+from human2robot.config.schema import (
     DemoConfig,
     DynamicsAugConfig,
     EvalConfig,
     ExperimentConfig,
     SACConfig,
 )
-from dynhand.rl.train import _subsample, train
+from human2robot.rl.train import _subsample, train
 
 
 def make_smoke_config(tmp_path, condition: str = "A") -> ExperimentConfig:

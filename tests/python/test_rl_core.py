@@ -3,10 +3,10 @@
 import numpy as np
 import torch
 
-from dynhand.config.schema import SACConfig
-from dynhand.rl.bc import BCTrainer
-from dynhand.rl.networks import GaussianActor, QNetwork
-from dynhand.rl.sac import SAC
+from human2robot.config.schema import SACConfig
+from human2robot.rl.bc import BCTrainer
+from human2robot.rl.networks import GaussianActor, QNetwork
+from human2robot.rl.sac import SAC
 
 DEVICE = torch.device("cpu")
 OBS_DIM, ACT_DIM, HIDDEN = 5, 3, 32
@@ -159,7 +159,7 @@ def test_bc_trainer_rejects_tiny_dataset() -> None:
         pass
     import pytest
 
-    from dynhand.rl.bc import BCTrainer as BC
+    from human2robot.rl.bc import BCTrainer as BC
 
     with pytest.raises(ValueError):
         BC(

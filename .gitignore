@@ -1,49 +1,24 @@
 # Python
 __pycache__/
-*.py[cod]
-*.egg-info/
+*.pyc
 .venv/
 .pytest_cache/
 .ruff_cache/
 .coverage
-coverage.xml
-htmlcov/
-dist/
+
+# Build outputs
 build/
 
-# Rust
-target/
+# C++ build tree only; keep cpp sources under version control
+cpp/build/
 
-# Third-party reference repos (cloned by scripts/setup_references.sh)
+# Experiment and data outputs are never committed
+data/
+results/
+
+# Third-party reference repos
 references/
 
-# Agent planning documents are local working material.
-agents/*
-!agents/RESUME_ENTRY.md
-
-# Isolated extra environments (HaMeR)
-envs/hamer/
-
-# Data and experiment outputs (regenerated, never committed)
-data/raw/**
-data/processed/**
-data/demonstrations/**
-results/**
-!data/raw/.gitkeep
-!data/processed/.gitkeep
-!data/demonstrations/.gitkeep
-!results/.gitkeep
-
-# Model artifacts
-*.pt
-*.onnx
-
-# Logs
-*.log
-runs/
-
-# OS and editors
-.DS_Store
+# OS artifacts
 Thumbs.db
-.idea/
-.vscode/
+.DS_Store

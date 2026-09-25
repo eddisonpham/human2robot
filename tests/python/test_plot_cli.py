@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from dynhand.evaluation.plot_cli import parse_runs
+from human2robot.evaluation.plot_cli import parse_runs
 
 
 def test_parse_single_run() -> None:

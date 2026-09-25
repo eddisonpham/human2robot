@@ -1,6 +1,6 @@
-# DynHand — Agent Specification Index
+# Human2Robot — Agent Specification Index
 
-This folder is the complete, standalone build specification for **DynHand**: a
+This folder is the complete, standalone build specification for **Human2Robot**: a
 physics-grounded, demonstration-guided RL system that retargets human hand
 video into manipulation skills for a simulated dexterous robot hand.
 

@@ -6,7 +6,11 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from dynhand.evaluation.plots import moving_average, plot_learning_curves, read_metrics
+from human2robot.evaluation.plots import (
+    moving_average,
+    plot_learning_curves,
+    read_metrics,
+)
 
 
 def write_metrics(path: Path, records: list[dict]) -> None:

@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from dynhand.envs.allegro import ENV_ID, AllegroPickupEnv
+from human2robot.envs.allegro import ENV_ID, AllegroPickupEnv
 
 
 def test_allegro_env_contract_and_registration() -> None:

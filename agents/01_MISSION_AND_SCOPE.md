@@ -53,7 +53,7 @@ If our SAC implementation can't get a reasonable success rate on a task the
 field has solved many times over, nothing downstream is trustworthy. This
 mirrors how a competent RL engineer actually de-risks a project.
 
-### Tier B — The actual contribution (the "DynHand" pipeline)
+### Tier B — The actual contribution (the "Human2Robot" pipeline)
 
 Build our own environment (a floating **Allegro Hand** in MuJoCo, see
 `06_ROBOT_AND_SIMULATION_SPEC.md`) and our own demonstration pipeline

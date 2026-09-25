@@ -3,7 +3,7 @@
 import sys
 from pathlib import Path
 
-from dynhand.evaluation import sb3_check
+from human2robot.evaluation import sb3_check
 
 
 class FakeModel:

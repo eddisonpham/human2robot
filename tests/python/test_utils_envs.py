@@ -4,9 +4,9 @@ import numpy as np
 import pytest
 import torch
 
-from dynhand.envs.vec import make_env_fn, make_vec_env
-from dynhand.utils.git_info import get_git_commit
-from dynhand.utils.seed import seed_everything, set_torch_threads, worker_seed
+from human2robot.envs.vec import make_env_fn, make_vec_env
+from human2robot.utils.git_info import get_git_commit
+from human2robot.utils.seed import seed_everything, set_torch_threads, worker_seed
 
 
 def test_seed_everything_is_deterministic() -> None:

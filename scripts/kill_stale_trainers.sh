@@ -17,7 +17,7 @@ for process in psutil.process_iter(["pid", "cmdline"]):
         command = " ".join(process.info["cmdline"] or [])
     except (psutil.NoSuchProcess, psutil.AccessDenied):
         continue
-    if "dynhand-train" in command or "dynhand.rl.train" in command:
+    if "human2robot-train" in command or "human2robot.rl.train" in command:
         matched.append(process)
 
 for process in matched:

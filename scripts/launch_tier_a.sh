@@ -17,7 +17,7 @@ run() {
   run_name="${config_name}_seed${seed}"
   log="results/logs/${run_name}.log"
   echo "[$(date +%H:%M:%S)] starting $run_name"
-  uv run dynhand-train \
+  uv run human2robot-train \
     --config "$config" \
     --seed "$seed" \
     --run-name "$run_name" \
