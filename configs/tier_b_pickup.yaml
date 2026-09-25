@@ -1,5 +1,4 @@
 experiment_id: tier_b_pickup_cond_a
-# Not runnable until the Phase 2 Allegro environment is implemented.
 env_id: Human2Robot-AllegroPickup-v0
 seed: 0
 condition: A
@@ -7,5 +6,10 @@ total_env_steps: 2000000
 num_envs: 12
 start_steps: 10000
 checkpoint_interval: 50000
-
-# Phase 2 must register this environment before this config is usable.
+eval:
+  interval_steps: 20000
+  episodes: 5
+sac:
+  batch_size: 256
+  buffer_size: 1000000
+  hidden_dim: 256
