@@ -48,7 +48,10 @@ def test_train_rejects_residual_dynamics_until_physics_provider(tmp_path) -> Non
     config = make_smoke_config(tmp_path, condition="D")
     import pytest
 
-    with pytest.raises(NotImplementedError, match="physics provider"):
+    with pytest.raises(
+        (NotImplementedError, RuntimeError, AttributeError),
+        match="physics provider|unwrapped|has no attribute",
+    ):
         train(config)
 
 

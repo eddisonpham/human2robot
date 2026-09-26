@@ -29,6 +29,9 @@ def _build_sac(config, checkpoint: str | Path) -> SAC:
         )
     finally:
         env.close()
+    checkpoint = Path(checkpoint)
+    if not checkpoint.exists():
+        raise FileNotFoundError(f"checkpoint not found: {checkpoint}")
     state = torch.load(checkpoint, map_location="cpu", weights_only=False)
     sac.load_state_dict(state["sac"])
     sac.actor.eval()

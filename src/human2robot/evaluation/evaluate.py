@@ -10,6 +10,11 @@ def build_single_env(env_id: str):
     import gymnasium_robotics  # noqa: F401  (registers Adroit envs)
     from gymnasium.wrappers import FlattenObservation
 
+    if env_id == "Human2Robot-AllegroPickup-v0":
+        from human2robot.envs.allegro import AllegroPickupEnv
+
+        env = AllegroPickupEnv()
+        return env
     env = gymnasium.make(env_id)
     if isinstance(env.observation_space, gymnasium.spaces.Dict):
         env = FlattenObservation(env)

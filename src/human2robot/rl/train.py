@@ -29,10 +29,13 @@ from human2robot.utils.seed import seed_everything, set_torch_threads, worker_se
 
 
 def _demo_transitions(config: ExperimentConfig, seed: int) -> dict[str, np.ndarray]:
-    if config.demo.minari_dataset is None:
-        raise ValueError("demo.enabled requires demo.minari_dataset to be set")
+    src = config.demo.minari_dataset or config.demo.demo_dir
+    if src is None:
+        raise ValueError(
+            "demo.enabled requires demo.minari_dataset or demo.demo_dir to be set"
+        )
     rng = np.random.default_rng(seed)
-    demos = load_minari_transitions(config.demo.minari_dataset)
+    demos = load_minari_transitions(src)
     return _subsample(demos, config.sac.buffer_size // 2, rng)
 
 
@@ -88,10 +91,6 @@ def train(
     run_name: str | None = None,
 ) -> dict[str, float]:
     """Run one training job from a validated config, return final metrics."""
-    if config.dynamics_aug.enabled and config.dynamics_aug.mode == "residual":
-        raise NotImplementedError(
-            "Residual augmentation requires a configured nominal physics provider"
-        )
     if run_name is not None:
         config.experiment_id = run_name
     seed_everything(config.seed)
@@ -152,6 +151,10 @@ def train(
             demos["rewards"],
             demos["dones"],
         )
+        print(
+            f"Demo source: {config.demo.minari_dataset or config.demo.demo_dir}; "
+            f"transitions: {len(demos['obs'])}"
+        )
         if start_step == 0:
             bc = BCTrainer(
                 sac,
@@ -206,6 +209,26 @@ def train(
         ):
             model_size = min(len(buffer), 10_000)
             model_data = buffer.sample(model_size)
+            physics_deltas = None
+            env_model = None
+            if config.dynamics_aug.mode == "residual":
+                import human2robot.dynamics.nominal_physics as _phys
+
+                env_model = envs.envs[0].unwrapped.model
+                physics_deltas = np.array(
+                    [
+                        _phys._physics_delta_to_obs_delta(
+                            env_model,
+                            obs_i,
+                            _phys.compute_physics_deltas(env_model, obs_i, act_i),
+                        )
+                        for obs_i, act_i in zip(
+                            model_data["obs"], model_data["acts"], strict=True
+                        )
+                    ],
+                    dtype=np.float32,
+                )
+
             dynamics_model.fit(
                 model_data["obs"],
                 model_data["acts"],
@@ -213,13 +236,33 @@ def train(
                 rewards=model_data["rewards"],
                 epochs=2,
                 batch_size=config.dynamics_aug.batch_size,
+                physics_deltas=physics_deltas,
                 seed=config.seed + global_step,
             )
+            synthetic_physics_deltas = None
+            if config.dynamics_aug.mode == "residual":
+                synthetic_physics_deltas = np.array(
+                    [
+                        _phys._physics_delta_to_obs_delta(
+                            env_model,
+                            obs_i,
+                            _phys.compute_physics_deltas(env_model, obs_i, act_i),
+                        )
+                        for obs_i, act_i in zip(
+                            model_data["obs"][: config.sac.batch_size],
+                            sac.act(model_data["obs"][: config.sac.batch_size]),
+                            strict=True,
+                        )
+                    ],
+                    dtype=np.float32,
+                )
+
             synthetic = synthetic_transitions(
                 dynamics_model,
                 model_data["obs"][: config.sac.batch_size],
                 sac.act(model_data["obs"][: config.sac.batch_size]),
                 member=global_step % config.dynamics_aug.ensemble_size,
+                physics_deltas=synthetic_physics_deltas,
             )
             synthetic_buffer.add_batch(
                 synthetic["obs"],

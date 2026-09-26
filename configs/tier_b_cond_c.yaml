@@ -1,0 +1,24 @@
+experiment_id: tier_b_pickup_cond_c
+env_id: Human2Robot-AllegroPickup-v0
+seed: 0
+condition: C
+total_env_steps: 2000000
+num_envs: 12
+start_steps: 10000
+checkpoint_interval: 50000
+eval:
+  interval_steps: 20000
+  episodes: 5
+sac:
+  batch_size: 256
+  buffer_size: 1000000
+  hidden_dim: 256
+dynamics_aug:
+  enabled: true
+  mode: blackbox
+  ensemble_size: 5
+  rollout_horizon: 1
+  synthetic_ratio: 0.5
+  retrain_every_steps: 250
+  lr: 3e-4
+  batch_size: 256

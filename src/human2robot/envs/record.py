@@ -100,13 +100,16 @@ class RunRecorder:
         self.checkpoint_dir = self.run_dir / "checkpoints"
         try:
             self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
-            with open(self.run_dir / "config.yaml", "w", encoding="utf-8") as f:
+            config_path = self.run_dir / "config.yaml"
+            with open(config_path, "w", encoding="utf-8") as f:
                 yaml.safe_dump(config.model_dump(), f, sort_keys=True)
             self.metrics_path = self.run_dir / "metrics.jsonl"
             self.metrics_path.touch(exist_ok=True)
-            with open(self.run_dir / "git_commit.txt", "w", encoding="utf-8") as f:
+            git_path = self.run_dir / "git_commit.txt"
+            with open(git_path, "w", encoding="utf-8") as f:
                 f.write(get_git_commit() + "\n")
-            with open(self.run_dir / "system_info.json", "w", encoding="utf-8") as f:
+            info_path = self.run_dir / "system_info.json"
+            with open(info_path, "w", encoding="utf-8") as f:
                 json.dump(self._system_info(), f, indent=2)
             self._write_status("running")
         except Exception:
@@ -174,10 +177,11 @@ class RunRecorder:
         }
         if extra:
             payload.update(extra)
-        temporary = self.run_dir / "run_status.json.tmp"
-        with open(temporary, "w", encoding="utf-8") as file:
+        tmp_path = self.run_dir / "run_status.json.tmp"
+        final_path = self.run_dir / "run_status.json"
+        with open(tmp_path, "w", encoding="utf-8") as file:
             json.dump(payload, file, indent=2)
-        temporary.replace(self.run_dir / "run_status.json")
+        tmp_path.replace(final_path)
 
     @staticmethod
     def _system_info() -> dict:
