@@ -123,7 +123,7 @@ def train(
         latest = recorder.latest_checkpoint()
         if latest is not None:
             start_step = _load_resume_checkpoint(latest, sac, buffer, rng)
-            print(f"Resumed from {latest} at step {start_step}")
+            print(f"Resumed from {latest} at step {start_step}", flush=True)
 
     dynamics_model = None
     synthetic_buffer = None
@@ -153,7 +153,8 @@ def train(
         )
         print(
             f"Demo source: {config.demo.minari_dataset or config.demo.demo_dir}; "
-            f"transitions: {len(demos['obs'])}"
+            f"transitions: {len(demos['obs'])}",
+            flush=True,
         )
         if start_step == 0:
             bc = BCTrainer(
@@ -353,7 +354,7 @@ def train(
     recorder.mark_completed()
     writer.close()
     recorder.close()
-    print(f"Training complete. Final checkpoint: {final}")
+    print(f"Training complete. Final checkpoint: {final}", flush=True)
     return final_metrics
 
 
