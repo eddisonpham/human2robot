@@ -69,28 +69,37 @@ class ReplayBuffer:
         }
 
     def state_dict(self) -> dict[str, np.ndarray | int]:
-        """Return arrays and pointers for checkpointing."""
+        """Return only the filled region of the arrays for checkpointing.
+
+        Serializing the full preallocated capacity wastes hundreds of
+        megabytes per checkpoint early in a run, so slice to ``size`` rows.
+        """
+        size = self.size
         return {
-            "obs": self.obs,
-            "acts": self.acts,
-            "next_obs": self.next_obs,
-            "rewards": self.rewards,
-            "dones": self.dones,
+            "obs": self.obs[:size],
+            "acts": self.acts[:size],
+            "next_obs": self.next_obs[:size],
+            "rewards": self.rewards[:size],
+            "dones": self.dones[:size],
             "ptr": self.ptr,
-            "size": self.size,
+            "size": size,
         }
 
     def load_state(self, state: dict[str, np.ndarray | int]) -> None:
-        """Restore arrays and pointers from a checkpoint."""
-        if state["obs"].shape != self.obs.shape:
+        """Restore arrays and pointers from a checkpoint.
+
+        Accepts both the current trimmed format and the older format that
+        serialized the whole preallocated capacity.
+        """
+        rows = int(state["size"])
+        if rows > self.obs.shape[0]:
             raise ValueError(
-                f"buffer shape mismatch: checkpoint {state['obs'].shape}"
-                f" vs {self.obs.shape}"
+                f"buffer shape mismatch: checkpoint has {rows} rows"
+                f" but capacity is {self.obs.shape[0]}"
             )
-        self.obs = state["obs"]
-        self.acts = state["acts"]
-        self.next_obs = state["next_obs"]
-        self.rewards = state["rewards"]
-        self.dones = state["dones"]
+        for name in ("obs", "acts", "next_obs", "rewards", "dones"):
+            values = np.asarray(state[name])
+            source = values if values.shape[0] == rows else values[:rows]
+            getattr(self, name)[:rows] = source
         self.ptr = int(state["ptr"])
-        self.size = int(state["size"])
+        self.size = rows

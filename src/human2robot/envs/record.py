@@ -154,19 +154,26 @@ class RunRecorder:
         with open(checksum_path, "a", encoding="utf-8") as file:
             record = {"step": step, "file": path.name, "sha256": digest}
             file.write(json.dumps(record) + "\n")
+        self._prune_checkpoints()
         return path
+
+    def _prune_checkpoints(self, keep: int = 3) -> None:
+        """Delete all but the newest *keep* checkpoints to bound disk usage."""
+        checkpoints = sorted(self.checkpoint_dir.glob("step_*.pt"), key=self._step_of)
+        for path in checkpoints[:-keep] if keep > 0 else []:
+            path.unlink(missing_ok=True)
 
     def latest_checkpoint(self) -> Path | None:
         """Return the newest checkpoint path, or None if there are none."""
-
-        def step_of(path: Path) -> int:
-            try:
-                return int(path.stem.split("_")[1])
-            except (IndexError, ValueError):
-                return -1
-
-        checkpoints = sorted(self.checkpoint_dir.glob("step_*.pt"), key=step_of)
+        checkpoints = sorted(self.checkpoint_dir.glob("step_*.pt"), key=self._step_of)
         return checkpoints[-1] if checkpoints else None
+
+    @staticmethod
+    def _step_of(path: Path) -> int:
+        try:
+            return int(path.stem.split("_")[1])
+        except (IndexError, ValueError):
+            return -1
 
     def _write_status(self, status: str, extra: dict | None = None) -> None:
         """Write the current lifecycle state for operational inspection."""
