@@ -1,36 +1,54 @@
-"""Demonstration loading from Minari datasets.
+"""Demonstration loading for Minari datasets and local .npz demos.
 
-Used for Tier A validation runs. Transitions are flattened to plain arrays
-so they can be inserted into the replay buffer and consumed by BC without
-any environment-specific handling.
+Transitions are flattened to plain arrays so they can be inserted into the
+replay buffer and consumed by BC without any environment-specific handling.
 """
+
+from __future__ import annotations
 
 import numpy as np
 
 
-def _flatten_obs(obs: object) -> np.ndarray:
+def _flatten_obs(obs: np.ndarray | dict[str, np.ndarray]) -> np.ndarray:
+    """Flatten a Minari observation into a 2-D array of (T, D)."""
+    if isinstance(obs, np.ndarray):
+        return obs
     if isinstance(obs, dict):
-        parts = [
-            np.asarray(v, dtype=np.float32).reshape(len(next(iter(obs.values()))), -1)
-            for v in obs.values()
-        ]
-        return np.concatenate(parts, axis=-1)
-    return np.asarray(obs, dtype=np.float32).reshape(len(obs), -1)
+        return np.concatenate([np.asarray(v) for v in obs.values()], axis=-1)
+    raise TypeError(f"unexpected observation type: {type(obs)}")
 
 
 def load_minari_transitions(dataset_id: str) -> dict[str, np.ndarray]:
-    """Load a Minari dataset and flatten episodes into transition arrays."""
+    """Load transitions for demo-seeded replay buffers.
+
+    Tries Minari dataset first; falls back to local .npz demo files when
+    dataset_id is not a known Minari ID.
+    """
     import minari
 
-    dataset = minari.load_dataset(dataset_id, download=True)
-    obs_list, act_list, next_obs_list, rew_list, done_list = [], [], [], [], []
+    dataset = None
+    try:
+        dataset = minari.load_dataset(dataset_id, download=True)
+    except Exception:
+        dataset = None
+
+    if dataset is None:
+        return _load_local_demos(dataset_id)
+
+    obs_list, act_list, next_obs_list, rew_list, done_list = (
+        [],
+        [],
+        [],
+        [],
+        [],
+    )
     for episode in dataset:
         observations = _flatten_obs(episode.observations)
         actions = np.asarray(episode.actions, dtype=np.float32).reshape(
             len(episode.actions), -1
         )
         terminations = np.asarray(episode.terminations, dtype=bool)
-        truncations = np.asarray(episode.truncations, dtype=bool)
+        truncations = np.asarray(episode.terminations, dtype=bool)
         obs_list.append(observations[:-1])
         next_obs_list.append(observations[1:])
         act_list.append(actions)
@@ -43,6 +61,17 @@ def load_minari_transitions(dataset_id: str) -> dict[str, np.ndarray]:
         "rewards": np.concatenate(rew_list, axis=0).reshape(-1, 1),
         "dones": np.concatenate(done_list, axis=0).reshape(-1, 1).astype(np.float32),
     }
+
+
+def _load_local_demos(demo_dir: str) -> dict[str, np.ndarray]:
+    """Load every .npz demo in *demo_dir* and flatten to transitions.
+
+    Each stored trajectory is replayed through the environment's MuJoCo data
+    so the returned observations match what the live env would produce.
+    """
+    from human2robot.rl._local_demos import _load_local_demos as _impl
+
+    return _impl(demo_dir)
 
 
 def seed_replay_buffer(buffer, demos: dict[str, np.ndarray]) -> int:
