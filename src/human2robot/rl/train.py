@@ -164,7 +164,13 @@ def train(
             start_step = _load_resume_checkpoint(
                 latest, sac, buffer, rng, dynamics_model
             )
+            dropped = recorder.rewind_metrics(start_step)
             print(f"Resumed from {latest} at step {start_step}", flush=True)
+            if dropped:
+                print(
+                    f"Dropped {dropped} metric record(s) after the checkpoint",
+                    flush=True,
+                )
 
     demo_buffer = None
     if config.demo.enabled:

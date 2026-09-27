@@ -18,7 +18,7 @@ update:
 
 > **The previous "BC-init beats from-scratch SAC by 48 percent" result did not
 > survive the fix for the critic bug.** After the fix, Conditions A and B are
-> statistically indistinguishable (A -48.9 +/- 5.3, B -51.0 +/- 1.6, over three
+> statistically indistinguishable (A -49.2 +/- 4.9, B -51.0 +/- 1.6, over three
 > seeds each). The 48 percent gap was an artifact of a broken observation
 > pipeline, not evidence for demonstration-guided initialization.
 
@@ -116,7 +116,7 @@ Trajectory summary (mean/median/best/worst/final over all evals in the run):
 
 | Condition | Seeds | Mean eval | Median | Best | Worst | Final |
 |-----------|-------|-----------|--------|------|-------|-------|
-| A (from-scratch SAC) | 3 | -48.9 | -9.5 | -2.4 | -495.1 | -5.2 |
+| A (from-scratch SAC) | 3 | -49.3 | -9.5 | -2.4 | -495.1 | -5.2 |
 | B (BC-init + demo replay) | 3 | -51.0 | -14.6 | -1.9 | -577.8 | -12.5 |
 | C (blackbox dynamics aug) | 1 | -43.9 | -9.8 | -2.9 | -423.6 | -17.0 |
 | D (residual dynamics aug) | 0 valid | QUARANTINED | - | - | - | - | - |
@@ -126,20 +126,20 @@ Per run, with critic health:
 
 | Condition | Seed | Status | Step | Evals | Mean | qf median | qf max | >1e3 | >1e6 |
 |-----------|------|--------|------|-------|------|-----------|--------|------|------|
-| A | s0 | completed | 2000004 | 103 | -44.9 | 0.04411 | 385.2 | 0 | 0 |
-| A | s1 | completed | 2000004 | 100 | -46.8 | 0.06769 | 678 | 0 | 0 |
+| A | s0 | completed | 2000004 | 100 | -46.0 | 0.05227 | 385.2 | 0 | 0 |
+| A | s1 | completed | 2000004 | 100 | -46.8 | 0.06837 | 678 | 0 | 0 |
 | A | s2 | completed | 2000004 | 100 | -54.9 | 0.05263 | 323.8 | 0 | 0 |
 | B | s0 | completed | 2000004 | 100 | -49.1 | 0.1689 | 1844 | 16 | 0 |
 | B | s1 | completed | 2000004 | 100 | -51.6 | 0.1337 | 1398 | 16 | 0 |
 | B | s2 | completed | 2000004 | 100 | -52.2 | 0.122 | 1369 | 15 | 0 |
-| C | s0 | completed | 2000004 | 100 | -43.9 | 0.05564 | 467.6 | 0 | 0 |
+| C | s0 | completed | 2000004 | 100 | -43.9 | 0.05552 | 467.6 | 0 | 0 |
 | D | s0 | quarantined, re-running | - | - | - | - | - | - | - |
 | E | s0 | quarantined, re-running | - | - | - | - | - | - | - |
 
 What this table says:
 
 - **No 1e6-scale explosions anywhere.** The failure mode is gone.
-- **A vs B is a null result.** A -48.9 +/- 5.3, B -51.0 +/- 1.6. B is
+- **A vs B is a null result.** A -49.2 +/- 4.9, B -51.0 +/- 1.6. B is
   marginally *worse* and the gap is well inside seed noise. Three seeds each.
 - **B still shows mild 1e3-scale spikes** (15-16 per run, max 1.8e3). A and C
   show none. Demo-seeded replay is the common factor in B and the quarantined

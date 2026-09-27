@@ -1,44 +1,52 @@
 # Human2Robot
 
-Human2Robot (formerly DynHand) is a reproducible reinforcement learning and
-ML systems project for dexterous manipulation, extended with a C++
-trajectory-optimization subsystem that turns retargeted human hand motions
-into constraint-aware robot demonstrations. The implemented foundation is a
-configuration-driven Soft Actor-Critic trainer with demonstration-guided
-learning on the standard Adroit relocate benchmark, a floating Allegro hand
-environment, and a learned dynamics ensemble. The C++ subsystem validates,
-projects, and optimizes retargeted joint trajectories, then hands them back
-for MuJoCo replay and downstream learning experiments.
+Demonstration-guided reinforcement learning for dexterous hand manipulation,
+extended with a C++ trajectory-optimization subsystem that turns retargeted
+human hand motions into constraint-aware robot demonstrations.
 
-The full build specification lives in `agents/`. Read `agents/00_INDEX.md`
-first; it defines the reading order. The C++ extension spec lives in
-`docs/HANDOFF_RESPONSE.md`; its current status in `cpp/README.md`.
+The research question this repository exists to answer is deliberately
+adversarial: **do human demonstrations and physics priors actually help SAC
+learn to control a robot hand, or is the extra machinery wasted engineering?**
+The honest answer so far is "mostly no", and proving that rigorously is most of
+the work. See [`REVIEW_STATUS.md`](REVIEW_STATUS.md) for current results.
 
-## Hardware
+- Build specification: [`agents/`](agents/) — start at
+  [`agents/00_INDEX.md`](agents/00_INDEX.md)
+- Experiment results and open issues: [`REVIEW_STATUS.md`](REVIEW_STATUS.md)
+- Investigations: [`docs/`](docs/)
 
+## Requirements
+
+- [uv](https://docs.astral.sh/uv/) and Python 3.11 (pinned by `.python-version`)
 - NVIDIA GPU with compute capability sm_120 (RTX 5060 tested), 8 GB VRAM
 - 24 CPU cores, 32 GB RAM
 - Windows or Linux; everything trains locally
 
 ## Setup
 
-Requires [uv](https://docs.astral.sh/uv/). Python 3.11 is pinned via
-`.python-version`.
-
 ```bash
 uv sync
 ```
 
-This installs PyTorch from the CUDA 12.8 index, which is required: torch
-builds older than 2.7.0 have no kernels for Blackwell GPUs.
+This installs PyTorch from the CUDA 12.8 index, which is **required**: the
+Blackwell GPU in use has no kernels in torch builds older than 2.7.0.
 
-Verify the stack:
+Verify the Python stack:
 
 ```bash
 uv run pytest tests/python/test_phase0_stack.py -v
 ```
 
-Clone third-party reference repos when a phase needs them:
+The C++ subsystem is a separate build. It is optional; only the trajectory
+optimization pipeline needs it. See [`cpp/README.md`](cpp/README.md) for the
+toolchain and build commands, then confirm the bindings import:
+
+```bash
+uv run python scripts/check_bindings.py
+```
+
+Third-party reference repositories, cloned into `references/` when a phase
+needs them:
 
 ```bash
 bash scripts/setup_references.sh
@@ -46,90 +54,149 @@ bash scripts/setup_references.sh
 
 ## Usage
 
-Tier A is the implemented benchmark. It uses `AdroitHandRelocate-v1`
-with dense reward, 39 observations, 30 actions, and a 200-step episode
-horizon. The Minari dataset `D4RL/relocate/human-v2` uses the same
-environment specification and contains 25 episodes and 9,942 transitions.
-The exact local package versions are recorded in the lockfile and each run's
-manifest.
+### Training
+
+Every ablation condition is the same trainer driven by a different config, so
+there is one command:
 
 ```bash
-uv run human2robot-train --config configs/tier_a_relocate.yaml --seed 0
+uv run human2robot-train --config configs/tier_b_pickup.yaml --seed 0
 ```
 
-Tier B is a registered floating Allegro pickup environment
-(`Human2Robot-AllegroPickup-v0`, 64 observations, 22 actions) whose training and
-demonstration pipeline remain in progress. Use
-`configs/tier_a_relocate*.yaml` for Tier A results.
+| Config | Condition | What it varies |
+| --- | --- | --- |
+| `tier_b_pickup.yaml` | A | from-scratch SAC |
+| `tier_b_cond_b.yaml` | B | BC-init + demo-seeded replay |
+| `tier_b_cond_c.yaml` | C | + blackbox dynamics augmentation |
+| `tier_b_cond_d.yaml` | D | + residual (physics-prior) augmentation |
+| `tier_b_cond_e.yaml` | E | demos and residual augmentation together |
+| `tier_a_relocate.yaml` | Tier A | `AdroitHandRelocate-v1` correctness gate |
+| `smoke.yaml` | - | 400-step end-to-end check |
 
-Evaluate a checkpoint:
+`--run-name` sets the output directory under `results/`. Run names must be
+unique: the recorder takes an OS lock on each run directory and refuses a
+second writer.
+
+### Running long jobs
+
+The Tier B matrix is 2,000,004 steps per run and takes a few hours each. Three
+scripts cover the operational loop.
 
 ```bash
-uv run human2robot-eval --config configs/tier_a_relocate.yaml --checkpoint results/<run>/checkpoints/final.pt
+bash scripts/resume_run.sh tier_b_pickup_cond_c_s1   # start or continue a run
+bash scripts/pause_run.sh  tier_b_pickup_cond_c_s1   # stop at a clean checkpoint
+bash scripts/watchdog_runs.sh 45 tier_b_pickup_cond_c_s1   # auto-restart on stall
 ```
 
-Run names must be unique per seed. The recorder takes an operating-system
-lock on each run directory and refuses a second writer. The queue scripts
-use this convention automatically:
+**Resume** restores SAC weights, the replay buffer, the dynamics ensemble, and
+RNG state, so a run continues from its checkpoint step rather than restarting.
+`resume_run.sh` infers the config and seed from the run name and prints the
+checkpoint it will resume from.
+
+**Pause** writes `results/<run>/PAUSE`, which the training loop polls, so the
+run stops at a clean checkpoint and records a `paused` status. Windows cannot
+deliver `SIGTERM` to a detached process, so this sentinel file is the only
+pause channel; it costs zero steps. `pause_run.sh --now` skips the graceful
+path and kills immediately, which rewinds to the last periodic checkpoint.
+
+**Watchdog** restarts a run from its latest checkpoint if it stops writing
+metrics for the given number of minutes. A single-instance PID lock prevents
+two watchdogs from fighting and from resurrecting a deliberately cancelled run.
+
+### Results
+
+Regenerate every result table directly from the recorded metrics, so the
+numbers in `REVIEW_STATUS.md` cannot drift from what is on disk:
 
 ```bash
-bash scripts/kill_stale_trainers.sh
-bash scripts/queue_phase1.sh
-bash scripts/status_tier_a.sh
+uv run python scripts/summarize_ablation.py --markdown
 ```
 
-The queue runs jobs sequentially, stops on the first failure, and records
-separate output for each seed. Audit a metrics stream before plotting:
+Plot learning curves and benchmark several conditions:
 
 ```bash
-uv run python -c "from human2robot.evaluation.audit import audit_metrics; print(audit_metrics('results/<run>/metrics.jsonl'))"
+uv run human2robot-plot --runs "SAC=results/run_a, SAC+demo=results/run_b" \
+  --metric eval_return_mean --out results/plots/curves.png
+uv run human2robot-benchmark --group "A=results/run_a,results/run_b" \
+  --out results/analysis/summary.json
 ```
 
+### Other entry points
+
+```bash
+uv run human2robot-eval --config <cfg> --checkpoint <ckpt>   # evaluate a checkpoint
+uv run human2robot-export --config <cfg> --checkpoint <ckpt> --out policy.onnx
+uv run human2robot-sb3-check --config <cfg>                 # cross-check vs SB3 SAC
+```
+
+ONNX export validates parity against PyTorch and reports inference latency
+before writing a manifest. The SB3 cross-check is an independent implementation
+used to validate the environment and matched hyperparameters; it is a debugging
+tool, not the primary training path, and needs `uv sync --group sb3`.
 
 ## Project layout
 
 ```text
-src/human2robot/    Library code: config, environments, RL, evaluation
-cpp/                C++20 trajectory library (h2r_traj), tests, benchmarks
-src/human2robot/cpp_bindings/  pybind11 module exposing the C++ optimizer
-configs/            YAML run configurations, validated against pydantic schemas
-tests/python/       pytest suite, coverage-gated at 90 percent
-tests/cpp/          Python-side integration tests for the C++ bindings
-scripts/            Setup and utility scripts
-data/               Raw datasets, processed trajectories, demonstration files
-results/            Experiment outputs: configs, metrics, checkpoints, plots
-references/         Cloned third-party repos (gitignored)
-agents/             Build specification and resume documentation
+src/human2robot/
+  config/        Pydantic schemas, condition flags, YAML loader
+  envs/          Floating Allegro environment, vector env, run recorder
+  rl/            SAC, behaviour cloning, replay, demos, the single trainer
+  dynamics/      Bootstrap ensemble and the nominal physics provider
+  data/          DexYCB loaders, retargeting, demo schemas
+  evaluation/    Eval harness, benchmarking, plots, robustness, SB3 check
+  optimization/  Trajectory optimization pipeline
+  export/        Deterministic ONNX actor export
+  utils/         Rotation conversion, seeding, git metadata
+  cpp_bindings/  pybind11 wrapper around the C++ optimizer
+cpp/             C++20 trajectory library (h2r), GoogleTest suites, examples
+configs/         Run configurations, validated against the schemas
+tests/python/    pytest suite, coverage-gated at 90 percent
+scripts/         Setup, data, and long-run operations
+agents/          Read-only build specification
+docs/            Investigations and design notes
 ```
 
-## Scope status
-
-Implemented: Tier A SAC, BC initialization, Minari demonstration replay, the
-floating Allegro Tier B environment, deterministic ONNX export with parity
-and latency reporting, benchmark summaries, the audited experiment
-infrastructure, and the C++ trajectory-optimization subsystem
-(`cpp/`, 57 tests) with its Python pipeline (`human2robot.optimization`).
-The pipeline optimized 100 retargeted demonstrations with 100/100
-convergence, reducing max jerk 44 percent and jerk-based smoothness cost 93
-percent while preserving tracking, and optimized demos replay cleanly in
-MuJoCo (see `results/trajectory_optimization/report.json`).
-
-In progress: real DexYCB retargeting (subject data downloading via
-`scripts/download_dexycb.sh`) and clean multi-seed Tier A evidence.
-
-Planned: residual physics-based dynamics, additional Tier B generalization
-cases, and the final multi-condition ablation curves.
+`data/`, `results/`, `logs/`, and `references/` are gitignored: they hold
+datasets, run outputs, and cloned third-party repos, none of which belong in
+version control.
 
 ## Development
 
 ```bash
-uv run pytest              # full suite with coverage
+uv run pytest              # full suite, coverage-gated at 90 percent
 uv run ruff check .        # lint
 uv run ruff format .       # format
 ```
 
+The gate is: `ruff check`, `ruff format --check`, and `pytest` all pass. There
+is no CI configuration, so run it locally before committing.
+
+`tests/python/test_invariants.py` deserves attention before changing anything in
+`envs/`, `dynamics/`, or `rl/`. It pins the conventions whose violations have
+each silently corrupted results: the MuJoCo `[w,x,y,z]` quaternion order, the
+substep count shared between the environment and the physics provider, the
+config fields the trainer branches on, and same-seed reproducibility down to
+the action sequence.
+
+## Scope status
+
+**Implemented.** Tier A SAC with BC initialization and Minari demonstration
+replay; the floating Allegro Tier B environment; blackbox and residual dynamics
+augmentation behind one trainer; deterministic ONNX export with parity and
+latency validation; benchmark and audit tooling; the C++ trajectory subsystem
+(`cpp/`, 57 GoogleTest cases) with its Python pipeline.
+
+**In progress.** The Tier B five-condition ablation. Conditions A, B, and C have
+results; D and E are blocked on domain randomization, which the specification
+requires to make a residual model non-trivial and which is not yet implemented.
+See [`docs/FINDINGS_residual_degeneracy.md`](docs/FINDINGS_residual_degeneracy.md).
+
+**Not started.** Real DexYCB retargeting end to end, the Rust inference server,
+and the Shadow Hand stretch work.
+
 ## Licenses
 
-Code is MIT. Datasets used for demonstrations carry their own terms:
-DexYCB is CC BY-NC 4.0 (non-commercial). See `agents/13_REPRODUCIBILITY_AND_CONVENTIONS.md`
+Code is MIT. Datasets carry their own terms: DexYCB is CC BY-NC 4.0
+(non-commercial). See
+[`agents/13_REPRODUCIBILITY_AND_CONVENTIONS.md`](agents/13_REPRODUCIBILITY_AND_CONVENTIONS.md)
 section 6 for the full table.

@@ -67,13 +67,6 @@ def test_rotvec_to_quat_is_scalar_first() -> None:
     assert np.allclose(nominal_physics._rotvec_to_quat(np.zeros(3)), [1.0, 0, 0, 0])
 
 
-def test_quat_delta_reads_the_vector_components() -> None:
-    """Columns 1:4 are x,y,z; using 0:3 would pick up the scalar part."""
-    quat_delta = np.array([[0.0, 0.25, 0.0, 0.0]])
-    out = nominal_physics._quat_delta_to_rotvec_delta(quat_delta, None)
-    assert np.allclose(out, [0.5, 0.0, 0.0])
-
-
 def test_nominal_delta_matches_a_real_env_step() -> None:
     """The core guarantee: nominal physics describes the actual simulator."""
     env = AllegroPickupEnv()

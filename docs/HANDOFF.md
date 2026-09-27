@@ -15,6 +15,10 @@ the two will disagree, so the table now lives in one place.
   found so far, and the open issues.
 - **`docs/FINDINGS_residual_degeneracy.md`** explains why Conditions D and E
   cannot currently produce an informative result.
+- **`docs/FINDINGS_training_hang.md`** records how far the intermittent
+  single-threaded stall has been narrowed.
+- **`docs/FINDINGS_metrics_integrity.md`** records the resume-induced metrics
+  duplication, the data loss it caused, and the TensorBoard recovery path.
 - **`agents/09_PHASE_PLAN.md`** remains the source of truth for what each phase
   requires and its acceptance test.
 - **`agents/RESUME_ENTRY.md`** is the entry point for picking the work back up.

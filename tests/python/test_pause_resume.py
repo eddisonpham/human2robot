@@ -263,3 +263,50 @@ def test_pause_sentinel_is_polled_and_cleared_on_resume(tmp_path) -> None:
         recorder.clear_pause()
     finally:
         recorder.close()
+
+
+def test_rewind_metrics_drops_records_after_the_checkpoint(tmp_path) -> None:
+    """A resume must not leave duplicate or out-of-order metric records."""
+    from human2robot.config.schema import ExperimentConfig as EC
+    from human2robot.envs.record import RunRecorder
+
+    config = EC(experiment_id="rewind", env_id="Pendulum-v1", results_dir=str(tmp_path))
+    recorder = RunRecorder(config, str(tmp_path))
+    try:
+        for step in (0, 1000, 2000, 3000, 4000):
+            recorder.log_metrics(step, {"eval_return_mean": float(step)})
+        assert recorder.rewind_metrics(2000) == 2
+        steps = [
+            json.loads(line)["step"]
+            for line in (tmp_path / "rewind" / "metrics.jsonl")
+            .read_text(encoding="utf-8")
+            .splitlines()
+            if line.strip()
+        ]
+        assert steps == [0, 1000, 2000]
+        # A second rewind at the same step is a no-op.
+        assert recorder.rewind_metrics(2000) == 0
+    finally:
+        recorder.close()
+
+
+def test_rewind_metrics_keeps_malformed_lines_for_the_audit(tmp_path) -> None:
+    """Unparseable lines are preserved so the audit still reports them."""
+    from human2robot.config.schema import ExperimentConfig as EC
+    from human2robot.envs.record import RunRecorder
+
+    config = EC(
+        experiment_id="malformed", env_id="Pendulum-v1", results_dir=str(tmp_path)
+    )
+    recorder = RunRecorder(config, str(tmp_path))
+    try:
+        recorder.log_metrics(100, {"eval_return_mean": -1.0})
+        with open(tmp_path / "malformed" / "metrics.jsonl", "a", encoding="utf-8") as f:
+            f.write("not json\n")
+        recorder.log_metrics(500, {"eval_return_mean": -2.0})
+        assert recorder.rewind_metrics(100) == 1
+        text = (tmp_path / "malformed" / "metrics.jsonl").read_text(encoding="utf-8")
+        assert "not json" in text
+        assert text.count('"step": 500') == 0
+    finally:
+        recorder.close()

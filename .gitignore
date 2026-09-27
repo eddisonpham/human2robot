@@ -1,30 +1,48 @@
 # Python
 __pycache__/
-*.pyc
+*.py[cod]
 .venv/
 .pytest_cache/
 .ruff_cache/
+.mypy_cache/
 .coverage
+.coverage.*
+htmlcov/
 
-# Build outputs
-build/
+# Build outputs. Patterns are anchored to the repo root so they cannot match a
+# source directory of the same name, which would silently ignore new code.
+# src/human2robot/data/ is a real package and must stay trackable.
+/build/
+/dist/
+*.egg-info/
 
-# C++ build tree only; keep cpp sources under version control
-cpp/build/
+# C++ build tree; cpp sources stay under version control
+/cpp/build/
+/target/
+
+# Rust inference server is unstarted Phase 10 work kept in its own repository.
+# It is not part of the current deliverable, so it is not tracked here.
+/rust/
 
 # Experiment and data outputs are never committed
-data/
-results/
+/data/
+/results/
 
 # Third-party reference repos
-references/
+/references/
+
+# Per-run training logs
+/logs/
+
+# Local tooling state (.agents/skills is tracked on purpose)
+/.freebuff/
+.idea/
+.vscode/
 
 # OS artifacts
 Thumbs.db
 .DS_Store
+desktop.ini
 
 # MuJoCo runtime artifact
 MUJOCO_LOG.TXT
-
-# Training logs are per-run scratch, never committed
-logs/

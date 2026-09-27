@@ -145,6 +145,38 @@ class RunRecorder:
             {"error_type": type(error).__name__, "error": str(error)},
         )
 
+    def rewind_metrics(self, step: int) -> int:
+        """Drop metric records beyond *step*, returning how many were removed.
+
+        A resume restarts from a checkpoint that is older than the last recorded
+        metrics, so the tail is rewritten as training proceeds again. Leaving it
+        in place produces duplicate and out-of-order steps, which the audit
+        rejects and which would silently skew any summary computed over the
+        stream.
+        """
+        if not self.metrics_path.exists():
+            return 0
+        kept, dropped = [], 0
+        with open(self.metrics_path, encoding="utf-8") as file:
+            for line in file:
+                text = line.strip()
+                if not text:
+                    continue
+                try:
+                    record_step = int(json.loads(text)["step"])
+                except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+                    kept.append(text)
+                    continue
+                if record_step > step:
+                    dropped += 1
+                else:
+                    kept.append(text)
+        if dropped:
+            tmp = self.metrics_path.with_suffix(".jsonl.tmp")
+            tmp.write_text("\n".join(kept) + ("\n" if kept else ""), encoding="utf-8")
+            tmp.replace(self.metrics_path)
+        return dropped
+
     def close(self) -> None:
         """Release ownership of the run directory."""
         self.lock.close()
