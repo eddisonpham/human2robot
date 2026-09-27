@@ -81,3 +81,13 @@ about residual dynamics in the meantime.
 
 The same degeneracy does not affect Condition C. Blackbox dynamics has no
 physics prior, so it must learn the full delta from data and is unaffected.
+
+## Status of the re-runs
+
+The D and E re-runs launched after the physics fix were **stopped early** once
+this degeneracy was confirmed, since they could not have answered their
+question. Their partial metrics are in `results/tier_b_pickup_cond_d_s*` and
+`_e_s*` and should not be reported.
+
+Condition C continues: seed 1 is training and seed 2 follows automatically.
+D and E need a domain-randomization implementation and fresh runs after that.
