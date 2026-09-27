@@ -22,3 +22,6 @@ references/
 # OS artifacts
 Thumbs.db
 .DS_Store
+
+# MuJoCo runtime artifact
+MUJOCO_LOG.TXT

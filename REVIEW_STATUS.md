@@ -1,4 +1,4 @@
-# Human2Robot - Status and Results (as of 2026-09-26, Cond B complete)
+# Human2Robot - Status and Results (as of 2026-09-27, full 5-condition matrix)
 
 ## Project identity
 
@@ -7,197 +7,179 @@
 - Tier B env: `Human2Robot-AllegroPickup-v0`
 - Runner: `uv run human2robot-train --config <yaml> --seed <n> [--run-name <name>] [--results-dir <dir>] [--resume]`
 - Configs: `configs/{tier_a_relocate.yaml, tier_b_pickup.yaml, tier_b_cond_{b,c,d,e}.yaml}`
+- Tables below are regenerated from disk by `uv run python scripts/summarize_ablation.py --markdown`
 
-## What was attempted
+## Headline
 
-Phase 8: a 5-condition ablation matrix on the Tier B pickup task
-(Conditions A-E), per `agents/05_RL_ALGORITHM_SPEC.md`.
+All five conditions are now complete on the Tier B pickup task at 2,000,004 steps
+each, and the Q-function is numerically stable. The headline finding changed
+once the critic bug was found, and the change is the important part of this
+update:
 
-The conditions differ only by config:
-- **A**: from-scratch SAC, no demos, no dynamics augmentation
-- **B**: BC-init + demo buffer seeding from local `.npz` demos
-- **C**: Condition A + blackbox dynamics augmentation (ensemble of 5)
-- **D**: physics + residual dynamics augmentation
-- **E**: full system (B-style demos + residual dynamics augmentation)
+> **The previous "BC-init beats from-scratch SAC by 48 percent" result did not
+> survive the fix for the critic bug.** After the fix, Conditions A and B are
+> statistically indistinguishable (A -48.9 +/- 5.3, B -51.0 +/- 1.6, over three
+> seeds each). The 48 percent gap was an artifact of a broken observation
+> pipeline, not evidence for demonstration-guided initialization.
 
-## What is actually on disk right now (Tier B pickup results)
+The single most useful condition is **C (blackbox dynamics augmentation) at
+-43.9**, but that is one seed and should be read as a lead, not a result.
 
-### Condition A - from scratch
+## The bug that invalidated the previous results
 
-Three completed seeds, each at 2,000,004 steps, 12 envs:
+`_rotation_vector` (three duplicated copies: `envs/allegro.py`,
+`dynamics/nominal_physics.py`, `rl/_local_demos.py`) recovered a rotation axis by
+dividing the skew part of the rotation matrix by `2 * sin(angle)`. That
+expression is singular at angle = pi, and a free box landing on the floor hits
+180 degrees routinely. Observed magnitudes reached **6.35e8** (p99.99 = 458,837)
+in observation dimensions 47-48 (object rotation vector) and 53-55 (object
+angular velocity).
 
-| Seed | Final eval return | Std | Notes |
-|------|-------------------|-----|-------|
-| s0   | -42.20            | 1.48 | Best of the three |
-| s1   | -513.44           | 39.80 | |
-| s2   | -269.89           | 1.06 | |
+Those dimensions are inputs to the critic, so every critic target was poisoned.
+The very first offline update logged `qf_loss = 9.9e11`; full runs reached
+1e15-1.9e15 with hundreds to a thousand spikes above 1000 per run.
 
-Across the whole trajectory (not just the final eval):
+The fix is a shared `utils/rotation.py` providing `rotation_vector(matrix)`,
+which converts through a normalized unit quaternion using the
+largest-diagonal branch, canonicalized to non-negative scalar part, with
+`angle = 2 * atan2(norm, w)`. It is bounded by pi at all angles. All three
+duplicated copies are deleted in favor of the import.
 
-| Seed | evals | mean | median | worst | best | qf explosions |
-|------|-------|------|--------|-------|------|---------------|
-| s0   | 105   | -335.6 | -349.4 | -721.2 | -18.4 | 486 |
-| s1   | 100   | -329.9 | -323.4 | -827.9 | -13.8 | 619 |
-| s2   | 100   | -421.7 | -419.8 | -729.7 | -5.3  | 1050 |
+Verified effect:
 
-All three runs show frequent Q-function loss explosions throughout training
-(qf_loss > 1000). The SAC learner is numerically unstable on this environment
-regardless of condition. Despite this, the runs complete and produce finite
-evaluation returns.
+| Measurement | Before | After |
+|-------------|--------|-------|
+| max abs observation over 60k env steps | 6.35e8 | 71-84 |
+| median qf_loss over 390 updates | - | 12.77 |
+| max qf_loss over 390 updates | 1.9e15 | 351 |
+| spikes above 1000 | hundreds to 1000 | 0 |
 
-The returns are negative because the task reward is shaped around object lift
-plus success bonus, and the agent rarely succeeds at picking up the object.
+`tests/python/test_rotation.py` (22 tests) includes a pinned reference copy of
+the old singular implementation asserting that it still diverges, so the
+regression cannot silently return.
 
-### Condition B - BC-init + demo seeding
+Commit `4b89a8c`.
 
-One completed seed:
-- `results/tier_b_pickup_cond_b_s0/` - **completed**, 2,000,004 steps
-  - BC-init from 11,208 transitions in `data/demonstrations/`
-  - 100 evals, mean -187.7, median -157.4, stdev 122.0
-  - final eval: **-288.92 +/- 18.93**
-  - 793 qf explosions, median qf_loss 675.8
+## Second fix: dynamics augmentation retune
 
-### Headline comparison
+`retrain_every_steps: 250 -> 2500` in `configs/tier_b_cond_{c,d,e}.yaml`.
+Refitting 5 ensemble members every 250 env steps dominated wall clock while the
+replay buffer had gained only a few hundred transitions. Commit `619af06`.
 
-| Condition | seeds | mean eval return |
-|-----------|-------|------------------|
-| A (from scratch) | 3 | -362.4 |
-| B (BC-init + demos) | 1 | **-187.7** |
+`synthetic_ratio` stayed at `0.5` deliberately. A 40k-step Condition C probe with
+the old ratio and the new retrain interval gave max q_loss 305 and zero spikes,
+which establishes the retune as a compute fix rather than a stability crutch.
+The instability was the rotation bug, not the augmentation ratio.
 
-BC initialization plus demo-seeded replay cuts the average return penalty by
-**+174.7 (48 percent)**. Condition B's single seed beats the *best* of the
-three Condition A seeds on trajectory mean (-187.7 vs -335.6).
+## Results, all conditions
 
-Caveats that must travel with this number:
-- Condition B has **one seed**, Condition A has three. The spec asks for at
-  least three seeds per condition, so this is a promising signal, not a
-  settled result.
-- Condition B is not numerically better behaved: it has 793 qf explosions and
-  a higher median qf_loss (675.8) than Cond A s0 (486 / 216.5). The gain comes
-  from the policy landing in a better basin, not from a stabler critic.
-- Both conditions are far from solving the task. No run reaches a positive
-  return, so the absolute numbers mostly measure how slowly the agent
-  accumulates the negative dense shaping terms.
+Trajectory summary (mean/median/best/worst/final over all evals in the run):
 
-### Conditions C, D, E - dynamics augmentation
+| Condition | Seeds | Mean eval | Median | Best | Worst | Final |
+|-----------|-------|-----------|--------|------|-------|-------|
+| A (from-scratch SAC) | 3 | -48.9 | -9.5 | -2.4 | -495.1 | -5.2 |
+| B (BC-init + demo replay) | 3 | -51.0 | -14.6 | -1.9 | -577.8 | -12.5 |
+| C (blackbox dynamics aug) | 1 | -43.9 | -9.8 | -2.9 | -423.6 | -17.0 |
+| D (residual dynamics aug) | 1 | -54.6 | -15.2 | -3.0 | -367.4 | -39.2 |
+| E (demos + residual dynamics aug) | 1 | -48.0 | -14.7 | -3.7 | -417.3 | -35.1 |
 
-**Not completed.** These conditions were attempted but the runs diverged
-quickly:
+Per run, with critic health:
 
-- Cond C s0: completed but broken - q_loss hit 22 trillion, alpha hit 8000+
-- Cond C s1: killed before completion (same divergence pattern)
-- Cond D s0: killed at step ~19k (q_loss hit 571 billion)
-- Cond E s0: killed at step ~9k (q_loss climbing rapidly)
+| Condition | Seed | Status | Step | Evals | Mean | qf median | qf max | >1e3 | >1e6 |
+|-----------|------|--------|------|-------|------|-----------|--------|------|------|
+| A | s0 | completed | 2000004 | 103 | -44.9 | 0.04411 | 385.2 | 0 | 0 |
+| A | s1 | completed | 2000004 | 100 | -46.8 | 0.06769 | 678 | 0 | 0 |
+| A | s2 | completed | 2000004 | 100 | -54.9 | 0.05263 | 323.8 | 0 | 0 |
+| B | s0 | completed | 2000004 | 100 | -49.1 | 0.1689 | 1844 | 16 | 0 |
+| B | s1 | completed | 2000004 | 100 | -51.6 | 0.1337 | 1398 | 16 | 0 |
+| B | s2 | completed | 2000004 | 100 | -52.2 | 0.122 | 1369 | 15 | 0 |
+| C | s0 | completed | 2000004 | 100 | -43.9 | 0.05564 | 467.6 | 0 | 0 |
+| D | s0 | completed | 2000004 | 100 | -54.6 | 0.08171 | 396.6 | 0 | 0 |
+| E | s0 | completed | 2000004 | 100 | -48.0 | 0.1846 | 2780 | 32 | 0 |
 
-The root cause is the dynamics augmentation config: `retrain_every_steps: 250`
-with `synthetic_ratio: 0.5` and `ensemble_size: 5` on a 64-d observation
-space with only 10k buffered transitions. The learned dynamics model is asked
-to predict 64-d next-state deltas from 22-d actions with insufficient data,
-and the synthetic transitions pollute half the replay buffer immediately.
+What this table says:
 
-Fixing this would require either drastically reducing synthetic_ratio (to
-0.05-0.1), increasing retrain_every_steps (to 5000+), reducing ensemble_size,
-or a fundamentally different approach to dynamics learning on this env. None
-of these were tested within the time budget.
+- **No 1e6-scale explosions anywhere.** The failure mode is gone.
+- **A vs B is a null result.** A -48.9 +/- 5.3, B -51.0 +/- 1.6. B is
+  marginally *worse* and the gap is well inside seed noise. Three seeds each.
+- **B and E still show mild 1e3-scale spikes** (15-32 per run, max ~2.8e3).
+  A, C, D show none. Demo-seeded replay is the common factor. Not urgent, but
+  it is the one remaining critic-health difference between conditions.
+- **C, D, E are one seed each.** Their ordering in the mean column is not
+  evidence. The A-vs-B comparison is the only one with enough seeds to mean
+  anything.
+- Absolute returns are all negative because the reward is shaped around object
+  lift plus a success bonus and the agent rarely picks the object up. No run
+  reaches a positive return.
+
+## Process defect found and worked around, not fixed
+
+Four runs wedged reproducibly: A s0 at 1.60M and 1.765M steps, A s1 at
+1.914M, A s2 at 30k. Symptom was ~59 CPU-seconds/minute with no metric writes
+for 25-45 minutes, always late in training, and never during a checkpoint write.
+Memory was fine (12GB free), so contention is not a confirmed cause.
+
+Each occurrence was recovered with `taskkill //F` plus `--resume`. The
+checkpoint fixes from the previous round (trimmed `state_dict`, retention of the
+newest 3) are what made every resume succeed: 608MB checkpoints loaded cleanly
+at 1.55M, 1.75M, and 1.9M states. A s2 was relaunched from scratch. **This hang
+is undiagnosed.**
 
 ## What was built this session
 
-### Nominal physics delta provider
+- `src/human2robot/utils/rotation.py` (new): `rotation_vector`,
+  `_matrix_to_quaternion`. The fix described above. 98% covered.
+- `src/human2robot/envs/allegro.py`, `dynamics/nominal_physics.py`,
+  `rl/_local_demos.py`: local `_rotation_vector` copies deleted, shared import.
+- `tests/python/test_rotation.py` (new): 22 tests, includes the pinned
+  old-implementation divergence check.
+- `tests/python/test_tier_b_configs.py` (new): 13 tests pinning every Tier B
+  config to `Human2Robot-AllegroPickup-v0`, 2,000,000 steps, 12 envs, and
+  consistent dynamics hyperparameters across the residual conditions. Added
+  after a launch error sent A s1/s2 to `AdroitHandRelocate-v1` under Tier B run
+  names; both were killed, deleted, and relaunched correctly.
+- `scripts/summarize_ablation.py` (new): regenerates every table above from
+  `results/tier_b_pickup_cond_<letter>_s<seed>/metrics.jsonl` and
+  `run_status.json`, so this document cannot drift from the metrics.
+- `configs/tier_b_cond_{c,d,e}.yaml`: `retrain_every_steps` 250 -> 2500.
 
-- `src/human2robot/dynamics/nominal_physics.py` - new module
-- Provides `compute_obs_delta(model, obs, action)` that returns the real
-  64-d observation delta from one MuJoCo step
-- Used by residual dynamics augmentation (Cond D/E) to compute physics deltas
-  for training the residual ensemble
-- Smoke-tested: returns valid 64-d deltas with norm ~7.5 for a typical step
+Pre-fix runs are quarantined in `results/_prefix_archive/*_prefix` so they
+cannot be mistaken for the corrected results.
 
-### Reward shaping (uncommitted change reverted)
+## Open issues
 
-The finger-closure and finger-object-distance reward terms added to
-`allegro.py` were removed. The reward is now:
-```
-reward = approach + 2.0 * lift - energy + (1.0 if success else 0.0)
-```
-
-### Train.py residual wiring
-
-- Removed the `NotImplementedError` guard that blocked residual mode
-- Added nominal physics delta computation in the training loop for residual mode
-- Fixed `_demo_transitions` to accept either `demo.minari_dataset` or
-  `demo.demo_dir`
-
-### Run recorder fix
-
-- `src/human2robot/envs/record.py` - fixed `run_status.json` race condition
-  where the temporary file could overwrite the final file with stale content
-- Changed atomic rename pattern to write to tmp, then replace final
-
-### Other changes
-
-- `evaluate.py`: direct env construction for AllegroPickup (bypasses gym registry)
-- `onnx.py`: added checkpoint existence check before loading
-- Config files: `configs/tier_b_cond_{b,c,d,e}.yaml`
-- Test files: `test_allegro_env_sanity.py`, `test_dynamics_ensemble_acceptance.py`,
-  `test_inverse_dynamics.py`, `test_local_demos.py` (committed earlier)
-
-## What is running right now
-
-Nothing. All in-scope runs have finished.
-
-- `results/tier_b_pickup_cond_a_s0`, `_s1`, `_s2` - completed
-- `results/tier_b_pickup_cond_b_s0` - completed
-
-### Infrastructure fix that unblocked Cond B
-
-The first Cond B attempt died silently after 213k steps. Root cause was
-checkpointing, not learning:
-
-- `ReplayBuffer.state_dict` serialized the entire preallocated capacity, so a
-  200k-row run still wrote a 608MB checkpoint. Fixed to slice to the filled
-  region: 608MB -> 122MB at that fill level.
-- Nothing deleted old checkpoints, so 41 of them accumulated per run.
-  `save_checkpoint` now keeps the newest 3, bounding a run to roughly 400MB
-  instead of 31GB.
-- `results/` had reached 123GB on a 953GB disk at 84 percent. After pruning
-  old checkpoints it is 7.2GB at 71 percent.
-- `load_state` accepts the old full-capacity format, so the pre-fix
-  `step_200004.pt` resumed without loss.
-
-All covered by `tests/python/test_checkpoint_retention.py` (6 tests).
-
-## What is not yet done
-
-1. **Conditions B needs seeds 1 and 2.** One seed cannot support a claim. The
-   B-vs-A gap of +174.7 is large enough to be worth confirming, and it costs
-   roughly 60 minutes per seed on this hardware.
-2. **Conditions C, D, E** are dropped from this deliverable. The dynamics
-   augmentation approach is unstable on this env with the current config.
-3. **The Q-loss explosions are unfixed and affect every condition.** Median
-   qf_loss sits between 174 and 1744 depending on the run, with hundreds of
-   spikes above 1000 per run. This is a real defect in the learner, not noise,
-   and it is the single highest-value thing left to fix.
-4. **The task is barely learned.** No run gets a positive return. The Allegro
-   hand's fingers curl inward and cannot reach below the palm, so grasping an
-   object at z=0.08 requires the hand to descend *and* the fingers to extend
-   almost simultaneously. Random exploration for 10k steps essentially never
-   finds that, which is the underlying difficulty.
-5. **Coverage**: pytest passes 168 tests but coverage is 85% (below the 90%
-   threshold in pyproject). The gap is mostly in modules the suite does not
-   exercise (optimization pipeline, evaluation plots, onnx export).
-6. **Push**: Not attempted. No remote access configured in this environment.
+1. **The task is barely learned.** No run gets a positive return. The Allegro
+   fingers curl inward and cannot reach below the palm, so grasping an object at
+   z=0.08 needs the hand to descend and the fingers to extend almost
+   simultaneously. Random exploration for 10k steps essentially never finds
+   that. This is the underlying difficulty and it limits what any of these
+   conditions can show.
+2. **C, D, E need seeds 1 and 2.** They currently have one seed each, so the
+   only multi-seed comparison in the matrix is A vs B, which is a null result.
+   C is the most promising lead at -43.9 and is worth the seeds.
+3. **Undiagnosed training hang** at 1.6M-1.9M steps, four occurrences.
+   Mitigated by resume, not fixed.
+4. **B and E retain 1e3-scale qf spikes.** Small, but the only remaining
+   critic-health difference between conditions.
+5. **Coverage**: `pytest tests/python/ --no-cov` gives 204 passed, 1 skipped,
+   1 deselected. `ruff check .` and `ruff format --check .` both pass. The
+   coverage gate in pyproject is 90% and currently measures 85.62%, which is a
+   pre-existing gap in modules the suite does not exercise (`onnx.py` 60%,
+   `plot_cli` 56%, `robustness` 50%, `sb3_check` 76%, demo 83%, train 87%). New
+   code from this session is well covered. Not addressed here.
+6. **Push**: not attempted. No remote access configured in this environment.
 
 ## How to read this as a human
 
-The defensible claim today is narrow: **on the Tier B pickup task, BC
-initialization plus demo-seeded replay improves SAC's average evaluation
-return by 48 percent over from-scratch SAC** (-187.7 vs -362.4), with one seed
-for B and three for A.
+The defensible claim today: **after fixing a singularity in the observation
+rotation conversion that had been poisoning every critic target, SAC trains
+stably on the Tier B pickup task, and demonstration-guided initialization (B)
+shows no benefit over from-scratch SAC (A) across three seeds each.** The
+earlier 48 percent advantage for B was an artifact of the bug and does not
+reproduce.
 
-Everything else is unfinished:
-- B needs two more seeds before the comparison is trustworthy.
-- Conditions C, D, and E produced no usable results. The dynamics
-  augmentation config is unstable and was abandoned rather than tuned.
-- Every condition shows hundreds of Q-function loss explosions. The learner
-  has a real numerical defect that none of these numbers are robust to.
-- No run solves the task, so all returns are negative and the absolute
-  magnitudes mostly reflect the dense shaping terms, not task competence.
+Blackbox dynamics augmentation (C) is the most promising direction at -43.9 on
+one seed, and residual augmentation (D) is the weakest at -54.6. Both need more
+seeds before either is a finding. The task itself is unsolved by every
+condition: all returns are negative, so the absolute numbers mostly measure how
+slowly each run accumulates the dense shaping terms rather than task competence.
