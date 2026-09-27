@@ -72,7 +72,7 @@ class RunLock:
             import msvcrt
 
             msvcrt.locking(file.fileno(), msvcrt.LK_NBLCK, 1)
-        else:
+        else:  # pragma: no cover - POSIX only, not reachable on Windows CI
             import fcntl
 
             fcntl.flock(file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -84,7 +84,7 @@ class RunLock:
 
             file.seek(0)
             msvcrt.locking(file.fileno(), msvcrt.LK_UNLCK, 1)
-        else:
+        else:  # pragma: no cover - POSIX only, not reachable on Windows CI
             import fcntl
 
             fcntl.flock(file.fileno(), fcntl.LOCK_UN)
