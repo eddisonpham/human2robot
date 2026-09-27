@@ -1,14 +1,20 @@
 # Human2Robot
 
-Demonstration-guided reinforcement learning for dexterous hand manipulation,
-extended with a C++ trajectory-optimization subsystem that turns retargeted
-human hand motions into constraint-aware robot demonstrations.
+Converts recorded human hand motion into constraint-aware trajectories for a
+simulated dexterous robot hand, then feeds those demonstrations to a
+demonstration-guided SAC trainer.
 
-The research question this repository exists to answer is deliberately
-adversarial: **do human demonstrations and physics priors actually help SAC
-learn to control a robot hand, or is the extra machinery wasted engineering?**
-The honest answer so far is "mostly no", and proving that rigorously is most of
-the work. See [`REVIEW_STATUS.md`](REVIEW_STATUS.md) for current results.
+The pipeline runs on **real DexYCB hand motion**: DexYCB sequences are ingested,
+MANO poses are retargeted to 22-DoF Allegro joint targets, and a C++20
+constrained optimizer projects the result onto joint, velocity, and acceleration
+limits. Optimizing the retargeted trajectories cuts held-out behavior-cloning
+error by **52 percent** on 10,088 real transitions.
+
+The reinforcement learning side asks a deliberately adversarial question: **do
+human demonstrations and physics priors actually help SAC learn to control a
+robot hand, or is the extra machinery wasted engineering?** The honest answer
+so far is "mostly no", and proving that rigorously is most of the work. See
+[`REVIEW_STATUS.md`](REVIEW_STATUS.md) for the ablation.
 
 - Build specification: [`agents/`](agents/) - start at
   [`agents/00_INDEX.md`](agents/00_INDEX.md)
@@ -112,6 +118,32 @@ metrics for the given number of minutes. A single-instance PID lock prevents
 two watchdogs from fighting and from resurrecting a deliberately cancelled run.
 
 ### Results
+
+#### Human-to-robot trajectory conversion
+
+100 real DexYCB sequences retargeted, then optimized. The measurement that
+matters is whether the optimized trajectories are easier to imitate, since
+smoothness and limit-satisfying motion is what a behavior-cloning or RL agent
+can actually fit:
+
+| Demo set | BC holdout MSE | MAE | Max error | Transitions |
+| --- | --- | --- | --- | --- |
+| raw retargeted | 7.08e-4 | 0.0182 | 0.120 | 10,088 |
+| optimized | **3.43e-4** | **0.0122** | **0.069** | 10,088 |
+| mixed | 5.18e-4 | 0.0151 | 0.114 | 20,175 |
+
+On the same real sequences the optimizer cut jerk **35.5 percent** and the
+smoothness cost **56.3 percent**, with 85 of 100 sequences converged (the
+synthetic set converges 100/100). Artifacts in
+`results/trajectory_optimization/`.
+
+Two caveats worth stating rather than hiding. Optimized `max_velocity` is
+exactly 2.0 with a standard deviation of 4e-16, so velocity and acceleration
+"gains" are constraint saturation, not optimization headroom; jerk and
+smoothness are the unbounded quantities and the honest wins. And the BC metric
+measures how learnable the trajectories are, not task success.
+
+#### The SAC ablation (null result)
 
 Three seeds each on the Tier B pickup task, 2,000,004 steps per run:
 
@@ -221,16 +253,20 @@ the action sequence.
 
 ## Scope status
 
-**Implemented.** Tier A SAC with BC initialization and Minari demonstration
-replay; the floating Allegro Tier B environment; blackbox and residual dynamics
+**Implemented.** The human-to-robot conversion pipeline: real DexYCB ingestion
+and MANO retargeting onto the Allegro hand (`src/human2robot/data/dexycb.py`),
+a C++20 constrained trajectory optimizer with 57 GoogleTest cases (`cpp/`), its
+pybind11 bridge, and the measured 52 percent reduction in held-out BC error.
+Also Tier A SAC with BC initialization and Minari demonstration replay; the
+floating Allegro Tier B environment; blackbox and residual dynamics
 augmentation behind one trainer; deterministic ONNX export with parity and
-latency validation; benchmark and audit tooling; the C++ trajectory subsystem
-(`cpp/`, 57 GoogleTest cases) with its Python pipeline.
+latency validation; benchmark and audit tooling.
 
-**In progress.** The Tier B five-condition ablation. Conditions A, B, and C have
-results; D and E are blocked on domain randomization, which the specification
-requires to make a residual model non-trivial and which is not yet implemented.
-See [`docs/FINDINGS_residual_degeneracy.md`](docs/FINDINGS_residual_degeneracy.md).
+**In progress.** The Tier B five-condition ablation. Conditions A, B, and C are
+complete at three seeds each and none separates from the others; D and E are
+blocked on domain randomization, which the specification requires to make a
+residual model non-trivial and which is not yet implemented. See
+[`docs/FINDINGS_residual_degeneracy.md`](docs/FINDINGS_residual_degeneracy.md).
 
 **Not started.** Real DexYCB retargeting end to end, the Rust inference server,
 and the Shadow Hand stretch work.
