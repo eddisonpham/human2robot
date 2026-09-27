@@ -9,6 +9,8 @@ import mujoco
 import numpy as np
 from gymnasium import spaces
 
+from human2robot.utils.rotation import rotation_vector as _rotation_vector
+
 ENV_ID = "Human2Robot-AllegroPickup-v0"
 _ACTION_DIM = 22
 _FINGER_DIM = 16
@@ -82,25 +84,6 @@ def _floating_model_xml() -> str:
     """
     xml = xml.replace("\n</mujoco>", sensor_xml + "\n</mujoco>")
     return xml
-
-
-def _rotation_vector(matrix: np.ndarray) -> np.ndarray:
-    """Convert a rotation matrix to a bounded axis-angle vector."""
-    trace = float(np.trace(matrix))
-    cosine = np.clip((trace - 1.0) / 2.0, -1.0, 1.0)
-    angle = float(np.arccos(cosine))
-    if angle < 1e-7:
-        return np.zeros(3, dtype=np.float32)
-    axis = np.array(
-        [
-            matrix[2, 1] - matrix[1, 2],
-            matrix[0, 2] - matrix[2, 0],
-            matrix[1, 0] - matrix[0, 1],
-        ],
-        dtype=np.float64,
-    )
-    axis /= 2.0 * np.sin(angle)
-    return (axis * angle).astype(np.float32)
 
 
 class AllegroPickupEnv(gym.Env[np.ndarray, np.ndarray]):

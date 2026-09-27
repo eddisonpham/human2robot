@@ -15,25 +15,7 @@ import numpy as np
 
 from human2robot.data.allegro_demos import load_demo_npz
 from human2robot.envs.allegro import AllegroPickupEnv
-
-
-def _rotation_vector(matrix: np.ndarray) -> np.ndarray:
-    """Convert a 3x3 rotation matrix to a bounded axis-angle vector."""
-    trace = float(np.trace(matrix))
-    cosine = float(np.clip((trace - 1.0) / 2.0, -1.0, 1.0))
-    angle = float(np.arccos(cosine))
-    if angle < 1e-7:
-        return np.zeros(3, dtype=np.float32)
-    axis = np.array(
-        [
-            matrix[2, 1] - matrix[1, 2],
-            matrix[0, 2] - matrix[2, 0],
-            matrix[1, 0] - matrix[0, 1],
-        ],
-        dtype=np.float64,
-    )
-    axis /= 2.0 * float(np.sin(angle))
-    return (axis * angle).astype(np.float32)
+from human2robot.utils.rotation import rotation_vector as _rotation_vector
 
 
 def _build_obs_from_state(

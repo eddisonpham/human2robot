@@ -15,6 +15,7 @@ import mujoco
 import numpy as np
 
 from human2robot.dynamics.ensemble import DynamicsEnsemble
+from human2robot.utils.rotation import rotation_vector as _rotation_vector
 
 # _ENV_STEP_SUBSTEPS mirrors the env's control_decimation so the physics
 # delta corresponds to the same number of MuJoCo sub-steps the env applies
@@ -142,25 +143,6 @@ def _quat_delta_to_rotvec_delta(
     """
     rotvec_delta = 2.0 * quat_delta[:, 0:3]
     return rotvec_delta[0] if rotvec_delta.shape[0] == 1 else rotvec_delta
-
-
-def _rotation_vector(matrix: np.ndarray) -> np.ndarray:
-    """Convert a rotation matrix to a bounded axis-angle vector."""
-    trace = float(np.trace(matrix))
-    cosine = np.clip((trace - 1.0) / 2.0, -1.0, 1.0)
-    angle = float(np.arccos(cosine))
-    if angle < 1e-7:
-        return np.zeros(3, dtype=np.float64)
-    axis = np.array(
-        [
-            matrix[2, 1] - matrix[1, 2],
-            matrix[0, 2] - matrix[2, 0],
-            matrix[1, 0] - matrix[0, 1],
-        ],
-        dtype=np.float64,
-    )
-    axis /= 2.0 * np.sin(angle)
-    return (axis * angle).astype(np.float64)
 
 
 def _physics_delta_to_obs_delta(
