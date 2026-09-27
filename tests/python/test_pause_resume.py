@@ -310,3 +310,59 @@ def test_rewind_metrics_keeps_malformed_lines_for_the_audit(tmp_path) -> None:
         assert text.count('"step": 500') == 0
     finally:
         recorder.close()
+
+
+def test_resolve_device_defaults_and_overrides() -> None:
+    """The device flag exists to escape CUDA driver hangs, so it must work."""
+
+    from human2robot.rl.train import resolve_device
+
+    assert resolve_device("cpu").type == "cpu"
+    auto = resolve_device("auto")
+    assert auto.type in {"cpu", "cuda"}
+    assert resolve_device(None).type == auto.type
+
+
+def test_resolve_device_rejects_cuda_when_unavailable(monkeypatch) -> None:
+    import torch
+
+    from human2robot.rl import train as train_module
+
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+    with pytest.raises(ValueError, match="cuda requested"):
+        train_module.resolve_device("cuda")
+
+
+def test_training_runs_on_an_explicit_cpu_device(tmp_path) -> None:
+    from human2robot.config.schema import EvalConfig, ExperimentConfig, SACConfig
+
+    seen = {}
+    import human2robot.rl.train as train_module
+
+    original = train_module.resolve_device
+
+    def spy(name):
+        device = original(name)
+        seen["device"] = device
+        return device
+
+    train_module.resolve_device = spy
+    try:
+        train_module.train(
+            ExperimentConfig(
+                experiment_id="device_cpu",
+                env_id="Pendulum-v1",
+                seed=0,
+                total_env_steps=60,
+                num_envs=2,
+                start_steps=10,
+                results_dir=str(tmp_path),
+                checkpoint_interval=50,
+                sac=SACConfig(batch_size=16, buffer_size=500, hidden_dim=16),
+                eval=EvalConfig(interval_steps=50, episodes=1),
+            ),
+            device_name="cpu",
+        )
+    finally:
+        train_module.resolve_device = original
+    assert seen["device"].type == "cpu"

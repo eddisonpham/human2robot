@@ -4,7 +4,7 @@
 # Usage: scripts/resume_run.sh <run_name> [config.yaml]
 #
 # Set SEED=<n> when the run name does not end in _s<n>. Set RUN_DIR_OVERRIDE when
-# the run lives outside results/.
+# the run lives outside results/. Set DEVICE=cuda to opt back into the GPU.
 #
 # The config is inferred from the run name when not given. Resuming restores SAC
 # weights, the replay buffer, the dynamics ensemble, and RNG state, so training
@@ -13,6 +13,12 @@ set -u
 
 RUN_NAME="${1:?usage: resume_run.sh <run_name> [config.yaml]}"
 CONFIG="${2:-}"
+
+# CPU by default. A killed training process can leave a CUDA context behind,
+# after which the next process blocks forever inside cudaStreamSynchronize
+# while PyTorch validates a distribution argument. Measured cost of CPU over
+# CUDA on a 40k-step Condition C run is 129s versus 120s, about 7 percent.
+DEVICE="${DEVICE:-cpu}"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT" || exit 1
@@ -52,5 +58,6 @@ else
 fi
 
 nohup uv run human2robot-train --config "$CONFIG" --seed "$SEED" \
-  --run-name "$RUN_NAME" $RESUME_FLAG >"logs/${RUN_NAME}.log" 2>&1 &
-echo "launched pid $!; log: logs/${RUN_NAME}.log"
+  --run-name "$RUN_NAME" --device "$DEVICE" $RESUME_FLAG \
+  >"logs/${RUN_NAME}.log" 2>&1 &
+echo "launched pid $! on $DEVICE; log: logs/${RUN_NAME}.log"

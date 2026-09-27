@@ -105,11 +105,28 @@ def _load_resume_checkpoint(path, sac, buffer, rng, dynamics_model=None) -> int:
     return int(checkpoint["global_step"])
 
 
+def resolve_device(name: str | None) -> torch.device:
+    """Select the torch device, defaulting to CUDA when it is available.
+
+    A killed training process can leave a CUDA context behind, and the next
+    process to touch the GPU may block forever inside cudaStreamSynchronize
+    while PyTorch validates a distribution argument. Pinning to CPU avoids the
+    failure entirely and costs little here, because the actor and critics are
+    small and the run is dominated by MuJoCo stepping.
+    """
+    if name in (None, "auto"):
+        return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if name == "cuda" and not torch.cuda.is_available():
+        raise ValueError("cuda requested but torch.cuda.is_available() is False")
+    return torch.device(name)
+
+
 def train(
     config: ExperimentConfig,
     resume: bool = False,
     run_dir_override: str | None = None,
     run_name: str | None = None,
+    device_name: str | None = None,
     _pause_after: int | None = None,
 ) -> dict[str, float]:
     """Run one training job from a validated config, return final metrics."""
@@ -117,7 +134,7 @@ def train(
         config.experiment_id = run_name
     seed_everything(config.seed)
     set_torch_threads(8)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = resolve_device(device_name)
     if run_dir_override is not None:
         config.results_dir = run_dir_override
     recorder = RunRecorder(config, config.results_dir)
@@ -433,6 +450,16 @@ def main() -> None:
         default=None,
         help="Unique output directory name for this seed or replicate",
     )
+    parser.add_argument(
+        "--device",
+        default=None,
+        choices=["auto", "cpu", "cuda"],
+        help=(
+            "Torch device. 'cpu' avoids the CUDA driver hangs that a leaked "
+            "context from a killed run can cause; these networks are small "
+            "enough that the GPU is not the bottleneck."
+        ),
+    )
     args = parser.parse_args()
     config = load_config(args.config)
     if args.seed is not None:
@@ -442,6 +469,7 @@ def main() -> None:
         resume=args.resume,
         run_dir_override=args.results_dir,
         run_name=args.run_name,
+        device_name=args.device,
     )
 
 

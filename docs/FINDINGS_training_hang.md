@@ -1,57 +1,101 @@
-# Finding: the training hang is a single-threaded busy spin
+# Finding: the training hang is a CUDA driver hang, now root-caused
 
-Date: 2026-09-27. Fifth occurrence, and the first one caught in the act.
+Date: 2026-09-27. Seventh occurrence, and the first one captured with a live
+stack dump.
 
-## Signature
+## Symptom
 
-Observed on Condition C seed 1 at step 542,004, with the process alive and
-metrics unwritten for 24 minutes:
+A run stops writing metrics while staying alive and burning CPU at exactly one
+core-second per wall second. One thread reads `Running` with tens of minutes of
+accumulated CPU while every other thread waits. Resuming from the latest
+checkpoint always works, then the same thing happens again later.
 
-- Process CPU advanced at exactly 1.0 core-seconds per wall second, sampled
-  three times at 10s intervals: 2576.1 -> 2586.3 -> 2596.3.
-- Thread-level inspection showed one thread `Running` with 38 minutes of
-  accumulated CPU, and every other thread `Wait` with under 5 minutes.
-- Memory was not a factor; the box had 12GB free and, by then, 20 idle cores.
+## Root cause
 
-So this is not a deadlock (a blocked thread burns no CPU) and not a parallel
-workload (that would show several running threads). It is one thread spinning
-without making progress.
+Sampling a hung process with `py-spy` shows a Python stack that looks
+innocuous, pointing at distribution argument validation:
 
-## What was ruled out
+```
+__init__ (torch\distributions\distribution.py:76)
+__init__ (torch\distributions\normal.py:66)
+forward (human2robot\rl\networks.py:48)      # Normal(mean, std) in the actor
+act (human2robot\rl\sac.py:60)
+train (human2robot\rl\train.py:252)
+```
 
-Measured directly rather than assumed:
+The native stack is where the truth is:
 
-- **MuJoCo stepping.** 3000 steps driven by a deterministic policy: 3.5s total,
-  worst single step 3ms, observations finite with `absmax` 0.22. The simulator
-  is not degrading.
-- **Evaluation.** Every logged eval ran the full 500 env steps and completed.
-  The env truncates at `max_episode_steps=500`, so the `while not done` loop in
-  `evaluate` is bounded.
-- **Ensemble retraining.** One full retrain at the capped 10,000-sample buffer
-  with 5 members, 2 epochs, batch 256 takes ~3s. Even at the
-  `retrain_every_steps=2500` cadence that cannot produce a 24-minute stall.
-- **Unbounded loops.** Every `while` and `for` in `train.py` and
-  `ensemble.py` is bounded by a config value or a range.
+```
+cuStreamSynchronize (nvcuda64.dll)
+c10::cuda::memcpy_and_sync (c10_cuda.dll)
+at::native::searchsorted_out_cuda
+at::native::_local_scalar_dense_cuda
+at::native::item
+at::native::is_nonzero
+```
 
-## The remaining suspect
+PyTorch validates a `Normal` by calling `is_nonzero(...)` and reducing it with
+`.item()`. On CUDA, `.item()` is a synchronizing call. The process is not slow,
+it is **blocked forever waiting on a GPU stream that never completes**.
 
-The spin is single-threaded Python or native code that does not terminate
-promptly, and the training loop's own structure does not contain it. Resolving
-this needs a Python-level stack sample from the live process, which means
-`py-spy` (`py-spy dump --pid <pid>`). It is not currently a project
-dependency, so it was not installed during this session.
+The Python frames are a red herring: the CPU simply parks at whatever call
+happened to issue the sync.
 
-Suggested next step: install `py-spy` as a dev dependency, then run a
-Condition A or C run with a sampling watchdog that dumps the stack every time
-metrics go quiet for more than 10 minutes. That converts the next occurrence
-from "recovered by resume" into a diagnosis.
+## Why the GPU gets into that state
 
-## Mitigation in place
+`nvidia-smi --query-compute-apps` listed seven PIDs attached to the GPU during
+the investigation, of which only one belonged to a live process. Every
+force-killed training run during this project left a CUDA context behind, and
+the accumulated contexts eventually put the driver into a state where a new
+process's first synchronizing call never returns.
 
-`scripts/watchdog_runs.sh` restarts a run from its latest checkpoint after 45
-minutes without a metric write. Checkpoint trimming and the dual-format loader
-mean every resume so far has succeeded, at the cost of rewinding to the last
-checkpoint (Condition C seed 1 rewound 542,004 -> 510,000, about 30k steps, and
-recovered past the previous stall within two minutes).
+The trigger is therefore not the algorithm, the environment, or the model. It is
+**repeatedly killing training processes on a shared GPU**, which is exactly what
+happened while managing the ablation matrix.
 
-Related: [[FINDINGS_residual_degeneracy]].
+## Fix
+
+`--device` on the trainer, defaulting to `auto` but selectable as `cpu`:
+
+```bash
+uv run human2robot-train --config <cfg> --seed 0 --device cpu
+```
+
+`scripts/resume_run.sh` now passes `--device cpu` by default, overridable with
+`DEVICE=cuda`.
+
+Cost measured on a 40,000-step Condition C run with 12 environments:
+
+| Device | Wall clock |
+| --- | --- |
+| CPU | 129 s |
+| CUDA | 120 s |
+
+Seven and a half percent, or roughly 8 minutes on a 2,000,004-step run, against
+losing 25 to 45 minutes and a checkpoint rewind every time the driver wedges.
+CPU is the right default for this workload: the actor and critics are small
+256-wide MLPs and the run is dominated by MuJoCo stepping, which is CPU work
+either way.
+
+## What was ruled out before this
+
+Each was measured rather than assumed, and each was a reasonable guess:
+
+- **MuJoCo degradation**: 3000 steps, worst single step 3 ms, observations
+  finite. Not degrading.
+- **Evaluation looping**: every logged evaluation completed its full 500
+  env steps; the environment truncates at `max_episode_steps`.
+- **Ensemble retraining**: one full retrain at the capped 10,000-sample buffer
+  is about 3 s. Cannot produce a 24-minute stall.
+- **Unbounded loops**: every `while` and `for` in `train.py` and `ensemble.py`
+  is bounded by a config value or a range.
+- **Deadlock**: a blocked thread burns no CPU, and this burns exactly one core
+  continuously.
+
+## How to catch it in future
+
+The watchdog recovers from the hang but cannot diagnose it. A cheap upgrade
+would be for the watchdog to dump a stack when metrics go quiet, using
+`uv run --with py-spy py-spy dump --pid <pid>`, which installs transiently and
+does not touch project dependencies. That is what turned this from a mystery
+into a one-line fix.

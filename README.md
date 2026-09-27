@@ -88,6 +88,14 @@ bash scripts/pause_run.sh  tier_b_pickup_cond_c_s1   # stop at a clean checkpoin
 bash scripts/watchdog_runs.sh 45 tier_b_pickup_cond_c_s1   # auto-restart on stall
 ```
 
+Runs default to **CPU**, which is deliberate. Force-killing a training process
+leaves a CUDA context behind, and after a few of those the next process to
+touch the GPU blocks forever inside `cudaStreamSynchronize`. The networks are
+small enough that the GPU is not the bottleneck: a 40k-step run takes 129s on
+CPU against 120s on CUDA. Set `DEVICE=cuda` to opt back in. The full
+investigation is in
+[`docs/FINDINGS_training_hang.md`](docs/FINDINGS_training_hang.md).
+
 **Resume** restores SAC weights, the replay buffer, the dynamics ensemble, and
 RNG state, so a run continues from its checkpoint step rather than restarting.
 `resume_run.sh` infers the config and seed from the run name and prints the
