@@ -1,9 +1,18 @@
 """Phase H experiment: does C++ optimization improve demo quality downstream?
 
 Trains identical BC heads on raw, optimized, and mixed demonstration
-trajectories from the synthetic set and compares regression quality and
-action-distribution alignment. Same hyperparameters for all conditions;
-only the demonstration source differs.
+trajectories and compares regression quality and action-distribution
+alignment. Same hyperparameters for all conditions; only the demonstration
+source differs.
+
+Usage:
+
+    uv run python scripts/run_downstream_bc.py [--set synthetic|dexycb]
+
+``synthetic`` (the default) compares ``data/demonstrations`` against
+``data/demonstrations_optimized``. ``dexycb`` compares the real retargeted
+trajectories against ``data/demonstrations_dexycb_optimized``, which
+``scripts/compare_dexycb_synthetic.py`` writes.
 """
 
 import json
@@ -18,6 +27,19 @@ from human2robot.data.allegro_demos import load_demo_npz
 RAW_DIR = Path("data/demonstrations")
 OPT_DIR = Path("data/demonstrations_optimized")
 OUT_PATH = Path("results/trajectory_optimization/bc_downstream.json")
+
+DEMO_SETS = {
+    "synthetic": (
+        Path("data/demonstrations"),
+        Path("data/demonstrations_optimized"),
+        Path("results/trajectory_optimization/bc_downstream.json"),
+    ),
+    "dexycb": (
+        Path("data/demonstrations_dexycb"),
+        Path("data/demonstrations_dexycb_optimized"),
+        Path("results/trajectory_optimization/bc_downstream_dexycb.json"),
+    ),
+}
 
 
 def load_positions(directory: Path, suffix: str = "") -> list[np.ndarray]:
@@ -103,30 +125,56 @@ def evaluate(model, holdout) -> dict:
     }
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    name = "synthetic"
+    if "--set" in argv:
+        name = argv[argv.index("--set") + 1]
+    if name not in DEMO_SETS:
+        print(
+            f"unknown demo set {name!r}; choose from {sorted(DEMO_SETS)}",
+            file=sys.stderr,
+        )
+        return 1
+    raw_dir, opt_dir, out_path = DEMO_SETS[name]
+
     rng = np.random.default_rng(0)
-    raw = load_positions(RAW_DIR)
-    optimized = load_positions(OPT_DIR, suffix="_opt")
-    print(f"raw demos: {len(raw)}, optimized demos: {len(optimized)}")
+    raw = load_positions(raw_dir)
+    optimized = load_positions(opt_dir, suffix="_opt")
+    print(f"[{name}] raw demos: {len(raw)}, optimized demos: {len(optimized)}")
 
     results = {}
-    for name, trajs in (
-        ("raw", raw),
-        ("optimized", optimized),
-        ("mixed", raw + optimized),
-    ):
+    arms = [("raw", raw), ("optimized", optimized), ("mixed", raw + optimized)]
+
+    control = None
+    control_files = sorted(opt_dir.glob("*_resampled.npz"))
+    if control_files:
+        control = load_positions(opt_dir, suffix="_resampled")
+        arms.insert(1, ("resampled_control", control))
+        print(f"control arm: {len(control)} resampled pre-optimization demos")
+
+    for arm, trajs in arms:
         train, holdout = make_transition_dataset(trajs, rng)
         model, best = train_bc(train, holdout, seed=0)
         metrics = evaluate(model, holdout)
         metrics["bc_holdout_best"] = best
         metrics["transitions"] = int(len(train[0]))
-        results[name] = metrics
-        print(f"{name}: {metrics}")
+        results[arm] = metrics
+        print(f"{arm}: {metrics}")
 
-    OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    OUT_PATH.write_text(json.dumps(results, indent=2))
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(results, indent=2))
     improvement = 100.0 * (1.0 - results["optimized"]["mse"] / results["raw"]["mse"])
-    print(f"optimized vs raw MSE improvement: {improvement:.1f}%")
+    print(f"[{name}] optimized vs raw MSE improvement: {improvement:.1f}%")
+    if control is not None:
+        matched = 100.0 * (
+            1.0 - results["optimized"]["mse"] / results["resampled_control"]["mse"]
+        )
+        print(
+            f"[{name}] optimized vs resampled-control MSE improvement "
+            f"(isolates the optimizer from resampling): {matched:.1f}%"
+        )
+    print(f"written to {out_path}")
     return 0
 
 

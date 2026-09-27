@@ -3,6 +3,11 @@
 DexYCB MANO capture runs at 30 Hz; trajectories are cubic-resampled to the
 20 ms control period of the Allegro environment before optimization so both
 demo sets are processed under identical pipeline settings.
+
+The optimized DexYCB trajectories are written to
+``data/demonstrations_dexycb_optimized/`` as ``<stem>_opt.npz`` files, so
+``scripts/run_downstream_bc.py`` can run the same imitation comparison on real
+data that it runs on the synthetic set. Pass ``--no-write`` to skip that.
 """
 
 import json
@@ -18,8 +23,11 @@ from human2robot.cpp_bindings import (
     optimize_trajectory,
 )
 from human2robot.data.allegro_demos import load_demo_npz
+from human2robot.data.processing import demo_actions, differentiate
+from human2robot.data.schema import DEMO_SCHEMA_VERSION
 
 DEXYCB_DIR = Path("data/demonstrations_dexycb")
+DEXYCB_OPT_DIR = Path("data/demonstrations_dexycb_optimized")
 SYNTH_DIR = Path("data/demonstrations")
 OUT_PATH = Path("results/trajectory_optimization/real_vs_synthetic.json")
 
@@ -62,7 +70,9 @@ def aggregate(metrics_rows: list[dict]) -> dict:
     return out
 
 
-def process_set(demo_paths: list[Path], seed: int, resample: bool) -> dict:
+def process_set(
+    demo_paths: list[Path], seed: int, resample: bool, out_dir: Path | None = None
+) -> dict:
     config = make_config(seed)
     raw_rows, opt_rows, converged = [], [], 0
     for path in demo_paths:
@@ -77,12 +87,48 @@ def process_set(demo_paths: list[Path], seed: int, resample: bool) -> dict:
         opt_rows.append(compute_metrics(q_opt, CONTROL_DT))
         if result.converged:
             converged += 1
+        if out_dir is not None:
+            if resample:
+                write_optimized_demo(
+                    out_dir / f"{path.stem}_resampled.npz", q, demo, tag="resampled"
+                )
+            write_optimized_demo(out_dir / f"{path.stem}_opt.npz", q_opt, demo)
     return {
         "count": len(demo_paths),
         "converged": converged,
         "raw": aggregate(raw_rows),
         "optimized": aggregate(opt_rows),
     }
+
+
+def write_optimized_demo(
+    out_path: Path, q_opt: np.ndarray, demo, tag: str = "opt"
+) -> None:
+    """Write a trajectory as a demo-schema NPZ.
+
+    Resampling changes the trajectory length, so the derived velocity and action
+    fields are recomputed from the joint path being written rather than copied
+    from the raw demo, which would leave the file internally inconsistent. The
+    ``resampled`` tag marks the pre-optimization control arm, so the imitation
+    comparison can isolate the optimizer from the resampling step.
+    """
+    q_opt = np.asarray(q_opt, dtype=np.float32)
+    qdot, _ = differentiate(q_opt, CONTROL_DT)
+    a_demo = demo_actions(q_opt, _LOWER, _UPPER)
+    length = len(q_opt)
+    np.savez_compressed(
+        out_path,
+        q=q_opt,
+        qdot=qdot.astype(np.float32),
+        a_demo=a_demo.astype(np.float32),
+        object_pose=np.zeros((length, 7), dtype=np.float32),
+        object_vel=np.zeros((length, 6), dtype=np.float32),
+        contact=np.zeros((length, 5), dtype=np.float32),
+        trajectory_id=np.array(f"{demo.trajectory_id}_{tag}"),
+        task_id=np.array(demo.task_id),
+        source=np.array(f"{demo.source}_{tag}"),
+        schema_version=np.array(DEMO_SCHEMA_VERSION),
+    )
 
 
 def reductions(report: dict) -> dict:
@@ -94,16 +140,23 @@ def reductions(report: dict) -> dict:
     return out
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    write = "--no-write" not in (argv or sys.argv[1:])
     dexycb_paths = sorted(DEXYCB_DIR.glob("dexycb_*.npz"))
     synth_paths = sorted(p for p in SYNTH_DIR.glob("*.npz") if "_opt" not in p.stem)
     if not dexycb_paths:
-        raise FileNotFoundError("run build_subject_demos first")
+        raise FileNotFoundError(
+            "no DexYCB demos; run: uv run python -m human2robot.data.dexycb"
+        )
     if not synth_paths:
         raise FileNotFoundError("run generate_synthetic_demos first")
 
+    out_dir = DEXYCB_OPT_DIR if write else None
+    if write:
+        out_dir.mkdir(parents=True, exist_ok=True)
+
     print(f"processing {len(dexycb_paths)} DexYCB demos (30 Hz -> 20 ms)...")
-    dexycb_report = process_set(dexycb_paths, seed=0, resample=True)
+    dexycb_report = process_set(dexycb_paths, seed=0, resample=True, out_dir=out_dir)
     print(f"processing {len(synth_paths)} synthetic demos...")
     synth_report = process_set(synth_paths, seed=0, resample=False)
 
@@ -137,6 +190,8 @@ def main() -> int:
         f"synthetic {synth_report['converged']}/{synth_report['count']}"
     )
     print(f"report written to {OUT_PATH}")
+    if write:
+        print(f"optimized DexYCB demos written to {DEXYCB_OPT_DIR}")
     return 0
 
 

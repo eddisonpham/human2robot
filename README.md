@@ -8,8 +8,9 @@ The pipeline runs on **real DexYCB hand motion**: DexYCB sequences are ingested,
 MANO poses are retargeted to 22-DoF Allegro joint targets, and a C++20
 constrained optimizer projects the result onto joint, velocity, and acceleration
 limits. On those real sequences the optimizer cuts jerk 36 percent and the
-smoothness cost 56 percent. A downstream imitation check on the demonstration
-set where it was run halves held-out behavior-cloning error.
+smoothness cost 56 percent, and more than halves worst-case imitation error. Its
+effect on average imitation error on real data is small, about 5 percent once
+resampling is controlled for.
 
 The reinforcement learning side asks a deliberately adversarial question: **do
 human demonstrations and physics priors actually help SAC learn to control a
@@ -124,9 +125,6 @@ two watchdogs from fighting and from resurrecting a deliberately cancelled run.
 
 #### Human-to-robot trajectory conversion
 
-Two halves of the pipeline have been measured separately, on different data, and
-have **not yet been joined**.
-
 Kinematic quality, measured on **100 real DexYCB sequences**:
 
 | Quantity | Real DexYCB | Synthetic |
@@ -136,28 +134,31 @@ Kinematic quality, measured on **100 real DexYCB sequences**:
 | max velocity | -57.2% | -65.4% |
 | sequences converged | 85/100 | 100/100 |
 
-Imitation quality, measured on the **synthetic** set of 100 sequences, where
-raw and optimized demonstrations are both on disk:
+Imitation quality, measured on **100 real DexYCB sequences**. The middle row is a
+control that isolates the optimizer, because DexYCB captures at 30 Hz and the
+environment runs at 20 ms:
 
-| Demo set | BC holdout MSE | MAE | Max error | Transitions |
-| --- | --- | --- | --- | --- |
-| raw retargeted | 7.08e-4 | 0.0182 | 0.120 | 10,088 |
-| optimized | **3.43e-4** | **0.0122** | **0.069** | 10,088 |
-| mixed | 5.18e-4 | 0.0151 | 0.114 | 20,175 |
+| Arm | BC holdout MSE | Max error | Transitions |
+| --- | --- | --- | --- |
+| raw (30 Hz) | 5.89e-4 | 0.291 | 6,146 |
+| resampled control (no optimizer) | 2.08e-4 | 0.180 | 10,280 |
+| optimized | **1.97e-4** | **0.082** | 10,280 |
 
-So the optimizer halves imitation error on the synthetic set, and demonstrably
-improves the kinematics of the real DexYCB trajectories. **The obvious
-experiment, running that same imitation comparison on the real sequences, has
-not been done**, because `scripts/compare_dexycb_synthetic.py` optimizes the
-real trajectories in memory and discards the output. Artifacts are in
-`results/trajectory_optimization/`.
+Comparing the first and last rows suggests a 66.5 percent gain. Almost all of it
+is resampling: 64.7 percent comes from resampling alone, and the optimizer adds
+**5.2 percent** on top. What the optimizer does deliver on real data is worst-case
+error, which more than halves (0.180 to 0.082).
 
-Three caveats worth stating rather than hiding. Optimized `max_velocity` is
-exactly 2.0 with a standard deviation of 4e-16, so velocity and acceleration
-"gains" are constraint saturation, not optimization headroom; jerk and
-smoothness are the unbounded quantities and the honest wins. The BC metric
-measures how learnable the trajectories are, not task success. And 15 of 100
-real sequences do not converge.
+On the **synthetic** set, where both arms are already at 20 ms so the comparison
+is clean, the optimizer cuts held-out error **51.6 percent** (MSE 7.08e-4 to
+3.43e-4, max error 0.120 to 0.069). The two data sets disagree, and the likely
+reason is input roughness, which is untested.
+
+Caveats worth stating rather than hiding: optimized `max_velocity` is 2.0000000000000018
+with a standard deviation of 4e-16, so velocity and acceleration "gains" are
+constraint saturation rather than optimization headroom; the BC metric measures
+how learnable the trajectories are, not task success; and 15 of 100 real
+sequences do not converge. Artifacts are in `results/trajectory_optimization/`.
 
 #### The SAC ablation (null result)
 
@@ -273,8 +274,8 @@ the action sequence.
 and MANO retargeting onto the Allegro hand (`src/human2robot/data/dexycb.py`),
 a C++20 constrained trajectory optimizer with 57 GoogleTest cases (`cpp/`) and
 its pybind11 bridge. On 100 real DexYCB sequences the optimizer cuts jerk 36
-percent and smoothness cost 56 percent; on the demo set where both variants are
-on disk it halves held-out behavior-cloning error.
+percent, smoothness cost 56 percent, and more than halves worst-case imitation
+error.
 Also Tier A SAC with BC initialization and Minari demonstration replay; the
 floating Allegro Tier B environment; blackbox and residual dynamics
 augmentation behind one trainer; deterministic ONNX export with parity and

@@ -17,29 +17,31 @@ pipeline**; the SAC ablation is a secondary validation and came back null.
   Python through pybind11 (`src/human2robot/cpp_bindings/`).
 - **Measured on real data** (`results/trajectory_optimization/`): optimizing the
   100 real DexYCB trajectories cut jerk **35.5 percent** and the smoothness cost
-  **56.3 percent**, with 85 of 100 sequences converged.
-- **Measured downstream on the synthetic set**, where raw and optimized demos
-  are both on disk: held-out behavior-cloning error fell **52 percent** (MSE
-  7.08e-4 -> 3.43e-4, MAE 0.0182 -> 0.0122, max error 0.120 -> 0.069) over
-  10,088 transitions.
-- **Known gap:** the two measurements have not been joined. The BC comparison
-  has not been run on the real DexYCB trajectories, because
-  `scripts/compare_dexycb_synthetic.py` optimizes them in memory and does not
-  save the output. Say so if asked; it is a small, well-scoped piece of work.
+  **56.3 percent**, with 85 of 100 sequences converged. Worst-case imitation
+  error more than halved (0.180 to 0.082).
+- **Measured downstream on the synthetic set**, where both arms are already at
+  the 20 ms control period: held-out behavior-cloning error fell **51.6 percent**
+  (MSE 7.08e-4 -> 3.43e-4, max error 0.120 -> 0.069) over 10,088 transitions.
+- **On real data the optimizer's effect on average imitation error is about 5
+  percent.** A naive raw-versus-optimized comparison suggests 66.5 percent, but
+  DexYCB captures at 30 Hz and the environment runs at 20 ms, so resampling to
+  the control rate accounts for 64.7 of those points. A resampled control arm
+  isolates the optimizer. Lead with the controlled number.
 - Coverage: 7 test files for this subsystem alone, including MuJoCo open-loop
   replay of the optimized demos (`test_mujoco_replay_optimized.py`).
 
 ### Caveats to state if probed
 
-- The 52 percent BC figure is from the **synthetic** demo set, not real human
-  motion. Do not conflate the two.
 - Velocity and acceleration "improvements" are mostly **constraint saturation**:
-  optimized `max_velocity` is exactly 2.0 with standard deviation 4e-16, so the
-  limit is binding and being clipped. The unbounded quantities (jerk,
+  optimized `max_velocity` is 2.0000000000000018 with standard deviation 4e-16,
+  so the limit is binding and being clipped. The unbounded quantities (jerk,
   smoothness) are the honest wins.
 - **85 of 100** real sequences converge; the synthetic set converges 100/100.
 - The BC metric measures how *learnable* the optimized trajectories are, not
   task success.
+- The synthetic and real data sets disagree (51.6 percent versus 5.2 percent
+  on mean error). If asked why, the honest answer is that input roughness is the
+  likely cause and that it is untested.
 
 ## Secondary: the RL ablation (null result, reported as such)
 

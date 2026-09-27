@@ -9,7 +9,9 @@ stores demos in the standard schema. Frames before MANO tracking starts
 
 from __future__ import annotations
 
+import argparse
 import json
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -169,3 +171,80 @@ def build_subject_demos(
     (output_dir / "manifest.json").write_text(json.dumps(manifest, indent=2))
     (output_dir / ".rng_check").write_text(str(rng.integers(0, 1000)))
     return written
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Retarget every DexYCB sequence of a subject into demo NPZs.
+
+    Usage:
+
+        uv run python -m human2robot.data.dexycb \\
+            --subject-dir data/raw/dexycb/20200709-subject-01 \\
+            --output-dir data/demonstrations_dexycb
+    """
+    project_root = Path(__file__).resolve().parents[3]
+    parser = argparse.ArgumentParser(
+        description="Retarget DexYCB sequences into Allegro demo NPZs"
+    )
+    parser.add_argument(
+        "--subject-dir",
+        default=None,
+        help="Directory holding one subdirectory per sequence with pose.npz",
+    )
+    parser.add_argument(
+        "--output-dir",
+        default=None,
+        help="Destination for the demo NPZs and manifest",
+    )
+    parser.add_argument("--seed", type=int, default=0, help="RNG seed for the manifest")
+    parser.add_argument(
+        "--max-count",
+        type=int,
+        default=None,
+        help="Stop after writing this many demos",
+    )
+    parser.add_argument(
+        "--subject",
+        default="20200709-subject-01",
+        help="Subject name, used to derive paths under the project root",
+    )
+    args = parser.parse_args(argv)
+
+    subject_dir = (
+        Path(args.subject_dir)
+        if args.subject_dir is not None
+        else project_root / "data" / "raw" / "dexycb" / args.subject
+    )
+    output_dir = (
+        Path(args.output_dir)
+        if args.output_dir is not None
+        else project_root / "data" / "demonstrations_dexycb"
+    )
+
+    if not subject_dir.is_dir():
+        print(
+            f"subject dir not found: {subject_dir}\n"
+            "run scripts/download_dexycb.sh first, or pass --subject-dir",
+            file=sys.stderr,
+        )
+        return 1
+    if not discover_sequences(subject_dir):
+        print(
+            f"no pose.npz sequences under {subject_dir}\n"
+            "pass --subject-dir pointing at an extracted subject",
+            file=sys.stderr,
+        )
+        return 1
+
+    written = build_subject_demos(
+        subject_dir,
+        output_dir,
+        seed=args.seed,
+        max_count=args.max_count,
+    )
+    print(f"wrote {len(written)} demos to {output_dir}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -51,7 +51,9 @@ trusting the pipeline on new data.
 ### 1b. Imitation quality, on the 100 synthetic sequences
 
 From `results/trajectory_optimization/bc_downstream.json`. Identical BC heads
-and hyperparameters across arms; only the demonstration source differs.
+and hyperparameters across arms; only the demonstration source differs. Both
+arms are already at the 20 ms control period, so this comparison isolates the
+optimizer.
 
 | Demo set | BC holdout MSE | MAE | Max error | Transitions |
 | --- | --- | --- | --- | --- |
@@ -59,46 +61,62 @@ and hyperparameters across arms; only the demonstration source differs.
 | optimized | **3.43e-4** | **0.0122** | **0.069** | 10,088 |
 | mixed | 5.18e-4 | 0.0151 | 0.114 | 20,175 |
 
-Optimizing cut held-out imitation error **52 percent**, with the reported error
-matching the early-stopped holdout best, so it is not an overfit figure.
-Optimized demonstrations are easier to imitate, which is the useful property:
-smooth, limit-respecting motion is what a behavior-cloning or RL agent can fit.
+Optimizing cut held-out imitation error **51.6 percent**, with the reported error
+matching the early-stopped holdout best, so it is not an overfit figure, and
+with matched transition counts on both arms.
 
-This measures learnability, not task success. Nothing here shows a robot
-performing better.
+### 1c. Imitation quality, on the 100 real DexYCB sequences
 
-### 1c. The gap between the two halves
+From `results/trajectory_optimization/bc_downstream_dexycb.json`. This is the
+experiment that was missing, and running it changed the conclusion.
 
-**The imitation comparison has never been run on the real DexYCB data.** The two
-measurements above sit on different data sets, and the obvious experiment, raw
-versus optimized on the real sequences, is missing.
+| Arm | BC holdout MSE | MAE | Max error | Transitions |
+| --- | --- | --- | --- | --- |
+| raw (30 Hz) | 5.89e-4 | 0.0121 | 0.291 | 6,146 |
+| resampled control (20 ms, no optimizer) | 2.08e-4 | 0.0072 | 0.180 | 10,280 |
+| optimized (20 ms + optimizer) | **1.97e-4** | 0.0084 | **0.082** | 10,280 |
+| mixed | 3.18e-4 | 0.0094 | 0.221 | 16,425 |
 
-The reason is mechanical: `scripts/compare_dexycb_synthetic.py` optimizes the
-real trajectories in memory and writes only aggregate statistics, discarding the
-optimized output. `scripts/run_downstream_bc.py` needs both variants on disk.
+Comparing the first and third rows naively suggests the optimizer improves
+imitation by **66.5 percent**. That number is almost entirely confounded. DexYCB
+captures at 30 Hz and the environment runs at 20 ms, so the optimized arm has
+been through a cubic resampling step that the raw arm never had. The middle row
+is the control that isolates it, and it shows:
 
-### 1d. Reproducing this, and where the chain breaks
+- Resampling to the control rate accounts for a **64.7 percent** error reduction
+  (5.89e-4 to 2.08e-4) on its own.
+- The optimizer on top of that contributes **5.2 percent** (2.08e-4 to 1.97e-4).
+
+So on real human motion the C++ optimizer's effect on average imitation error is
+**small**. Two narrower effects are real: worst-case error more than halves
+(0.180 to 0.082) and the optimized arm is the only one whose transitions are
+limit-respecting, so it is the only arm that satisfies the robot's joint
+constraints. Mean absolute error moves the other way (0.0072 to 0.0084).
+
+**The honest summary of the two data sets is that they disagree.** The optimizer
+halves imitation error on synthetic demonstrations and adds 5 percent on real
+ones. The most likely explanation is input roughness: the synthetic
+trajectories evidently have more for the optimizer to remove than the resampled
+real ones do. That hypothesis is untested.
+
+The practical lesson is the same one this project keeps learning. The 66.5
+percent figure was available, looked excellent, and was produced by a
+confounded comparison. It was only caught by adding the control arm.
+
+### 1d. Reproducing this
 
 | Step | Command | Produces |
 | --- | --- | --- |
 | 1 | `bash scripts/download_dexycb.sh` | `data/raw/dexycb/` |
 | 2 | `bash scripts/wsl_setup_retargeting.sh` | WSL venv with `dex-retargeting` |
 | 3 | `uv run python scripts/retarget_dexycb_ik.py [link_length] [subject] [dir]` | `data/demonstrations_dexycb_ik/` (DexPilot IK) |
-| 4 | **no committed command** | `data/demonstrations_dexycb/` (vector retargeting, 100 seq) |
-| 5 | `uv run python scripts/compare_dexycb_synthetic.py` | `real_vs_synthetic.json` |
+| 4 | `uv run python -m human2robot.data.dexycb` | `data/demonstrations_dexycb/` (vector retargeting, 100 seq) |
+| 5 | `uv run python scripts/compare_dexycb_synthetic.py` | `real_vs_synthetic.json` and `data/demonstrations_dexycb_optimized/` |
 | 6 | `uv run python scripts/run_trajectory_experiment.py` | `report.json` (synthetic) |
-| 7 | `uv run python scripts/run_downstream_bc.py` | `bc_downstream.json` (synthetic) |
+| 7 | `uv run python scripts/run_downstream_bc.py --set dexycb` | `bc_downstream_dexycb.json` (real) |
+| 8 | `uv run python scripts/run_downstream_bc.py --set synthetic` | `bc_downstream.json` (synthetic) |
 
-Step 4 is the break. `data/demonstrations_dexycb/` exists on disk with 100
-sequences, but the function that builds it, `dexycb.build_subject_demos`, has
-no CLI and no production caller; only `tests/python/test_dexycb_pipeline.py`
-invokes it. `compare_dexycb_synthetic.py` responds to a missing directory with
-"run build_subject_demos first" and no command to run. So the primary
-deliverable's input set is not regenerable from the committed code.
-
-Note also that the optimized demonstrations on disk in
-`data/demonstrations_optimized/` are the **synthetic** set, which is why 1b is
-synthetic. The real optimized trajectories were never written.
+The chain is now complete and scripted end to end.
 
 ## 2. SAC ablation: a null result
 
@@ -140,10 +158,21 @@ produced them.
 
 ## 3. Honest summary
 
-The conversion pipeline works on real human motion and demonstrably improves
-trajectory kinematics, and on the data set where both variants exist it halves
-imitation error. What it has not done is demonstrate either benefit on real data
-end to end, and the input set for that experiment is not regenerable from
-committed code.
+The pipeline runs end to end on real human motion, from DexYCB download through
+retargeting and constrained optimization, and every step is a committed command.
+
+On kinematics the optimizer does real work on real data: jerk down 35.5 percent,
+smoothness cost down 56.3 percent, and worst-case imitation error more than
+halved. On average imitation error the picture is much weaker than it first
+looks. Halving error on synthetic demonstrations is real, but on real DexYCB
+trajectories almost all of the apparent gain comes from resampling to the
+control rate, and the optimizer itself contributes about 5 percent.
 
 The ablation is a null result on an unsolved task.
+
+Four findings in this project have turned out to be artifacts rather than
+results, all of them plausible-looking numbers that a reviewer would have had
+no reason to question: BC-init's 48 percent advantage, residual augmentation's
+apparent weakness, Condition C's apparent promise, and now the 66.5 percent
+imitation gain. Each was found by checking a control or the underlying source,
+never by watching a metric.
