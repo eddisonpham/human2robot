@@ -3,9 +3,8 @@
 > **Scope note.** This document covers the **SAC ablation only**. The project's
 > primary deliverable is the human-to-robot trajectory conversion pipeline in
 > `src/human2robot/data/dexycb.py` and `cpp/`, which runs on 100 real DexYCB
-> sequences and reduces held-out behavior-cloning error by 52 percent. See
-> [`agents/RESUME_ENTRY.md`](agents/RESUME_ENTRY.md) for that side, summarized in
-> the README.
+> sequences. See [`agents/RESUME_ENTRY.md`](agents/RESUME_ENTRY.md) for that
+> side, summarized in the README.
 
 ## Project identity
 

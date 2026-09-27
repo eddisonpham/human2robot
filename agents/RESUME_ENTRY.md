@@ -15,16 +15,24 @@ pipeline**; the SAC ablation is a secondary validation and came back null.
   acceleration, jerk, collision, limits), and a seeded stochastic optimizer with
   projection. **57 GoogleTest cases pass** (verified: 57/57 in 1.45s). Exposed to
   Python through pybind11 (`src/human2robot/cpp_bindings/`).
-- **Measured result on real data** (`results/trajectory_optimization/`):
-  optimizing the retargeted trajectories cut held-out behavior-cloning error
-  **52 percent** (MSE 7.08e-4 -> 3.43e-4, MAE 0.0182 -> 0.0122, max error 0.120
-  -> 0.069) over 10,088 real transitions. Jerk fell 35.5 percent and the
-  smoothness cost 56.3 percent.
+- **Measured on real data** (`results/trajectory_optimization/`): optimizing the
+  100 real DexYCB trajectories cut jerk **35.5 percent** and the smoothness cost
+  **56.3 percent**, with 85 of 100 sequences converged.
+- **Measured downstream on the synthetic set**, where raw and optimized demos
+  are both on disk: held-out behavior-cloning error fell **52 percent** (MSE
+  7.08e-4 -> 3.43e-4, MAE 0.0182 -> 0.0122, max error 0.120 -> 0.069) over
+  10,088 transitions.
+- **Known gap:** the two measurements have not been joined. The BC comparison
+  has not been run on the real DexYCB trajectories, because
+  `scripts/compare_dexycb_synthetic.py` optimizes them in memory and does not
+  save the output. Say so if asked; it is a small, well-scoped piece of work.
 - Coverage: 7 test files for this subsystem alone, including MuJoCo open-loop
   replay of the optimized demos (`test_mujoco_replay_optimized.py`).
 
 ### Caveats to state if probed
 
+- The 52 percent BC figure is from the **synthetic** demo set, not real human
+  motion. Do not conflate the two.
 - Velocity and acceleration "improvements" are mostly **constraint saturation**:
   optimized `max_velocity` is exactly 2.0 with standard deviation 4e-16, so the
   limit is binding and being clipped. The unbounded quantities (jerk,

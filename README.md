@@ -7,8 +7,9 @@ demonstration-guided SAC trainer.
 The pipeline runs on **real DexYCB hand motion**: DexYCB sequences are ingested,
 MANO poses are retargeted to 22-DoF Allegro joint targets, and a C++20
 constrained optimizer projects the result onto joint, velocity, and acceleration
-limits. Optimizing the retargeted trajectories cuts held-out behavior-cloning
-error by **52 percent** on 10,088 real transitions.
+limits. On those real sequences the optimizer cuts jerk 36 percent and the
+smoothness cost 56 percent. A downstream imitation check on the demonstration
+set where it was run halves held-out behavior-cloning error.
 
 The reinforcement learning side asks a deliberately adversarial question: **do
 human demonstrations and physics priors actually help SAC learn to control a
@@ -121,10 +122,20 @@ two watchdogs from fighting and from resurrecting a deliberately cancelled run.
 
 #### Human-to-robot trajectory conversion
 
-100 real DexYCB sequences retargeted, then optimized. The measurement that
-matters is whether the optimized trajectories are easier to imitate, since
-smoothness and limit-satisfying motion is what a behavior-cloning or RL agent
-can actually fit:
+Two halves of the pipeline have been measured separately, on different data, and
+have **not yet been joined**.
+
+Kinematic quality, measured on **100 real DexYCB sequences**:
+
+| Quantity | Real DexYCB | Synthetic |
+| --- | --- | --- |
+| max jerk | -35.5% | -44.2% |
+| smoothness cost | -56.3% | -93.0% |
+| max velocity | -57.2% | -65.4% |
+| sequences converged | 85/100 | 100/100 |
+
+Imitation quality, measured on the **synthetic** set of 100 sequences, where
+raw and optimized demonstrations are both on disk:
 
 | Demo set | BC holdout MSE | MAE | Max error | Transitions |
 | --- | --- | --- | --- | --- |
@@ -132,16 +143,19 @@ can actually fit:
 | optimized | **3.43e-4** | **0.0122** | **0.069** | 10,088 |
 | mixed | 5.18e-4 | 0.0151 | 0.114 | 20,175 |
 
-On the same real sequences the optimizer cut jerk **35.5 percent** and the
-smoothness cost **56.3 percent**, with 85 of 100 sequences converged (the
-synthetic set converges 100/100). Artifacts in
+So the optimizer halves imitation error on the synthetic set, and demonstrably
+improves the kinematics of the real DexYCB trajectories. **The obvious
+experiment, running that same imitation comparison on the real sequences, has
+not been done**, because `scripts/compare_dexycb_synthetic.py` optimizes the
+real trajectories in memory and discards the output. Artifacts are in
 `results/trajectory_optimization/`.
 
-Two caveats worth stating rather than hiding. Optimized `max_velocity` is
+Three caveats worth stating rather than hiding. Optimized `max_velocity` is
 exactly 2.0 with a standard deviation of 4e-16, so velocity and acceleration
 "gains" are constraint saturation, not optimization headroom; jerk and
-smoothness are the unbounded quantities and the honest wins. And the BC metric
-measures how learnable the trajectories are, not task success.
+smoothness are the unbounded quantities and the honest wins. The BC metric
+measures how learnable the trajectories are, not task success. And 15 of 100
+real sequences do not converge.
 
 #### The SAC ablation (null result)
 
@@ -255,8 +269,10 @@ the action sequence.
 
 **Implemented.** The human-to-robot conversion pipeline: real DexYCB ingestion
 and MANO retargeting onto the Allegro hand (`src/human2robot/data/dexycb.py`),
-a C++20 constrained trajectory optimizer with 57 GoogleTest cases (`cpp/`), its
-pybind11 bridge, and the measured 52 percent reduction in held-out BC error.
+a C++20 constrained trajectory optimizer with 57 GoogleTest cases (`cpp/`) and
+its pybind11 bridge. On 100 real DexYCB sequences the optimizer cuts jerk 36
+percent and smoothness cost 56 percent; on the demo set where both variants are
+on disk it halves held-out behavior-cloning error.
 Also Tier A SAC with BC initialization and Minari demonstration replay; the
 floating Allegro Tier B environment; blackbox and residual dynamics
 augmentation behind one trainer; deterministic ONNX export with parity and
