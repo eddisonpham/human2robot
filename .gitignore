@@ -25,3 +25,6 @@ Thumbs.db
 
 # MuJoCo runtime artifact
 MUJOCO_LOG.TXT
+
+# Training logs are per-run scratch, never committed
+logs/

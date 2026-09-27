@@ -15,12 +15,12 @@ import mujoco
 import numpy as np
 
 from human2robot.dynamics.ensemble import DynamicsEnsemble
+from human2robot.envs.allegro import ENV_STEP_SUBSTEPS
 from human2robot.utils.rotation import rotation_vector as _rotation_vector
 
-# _ENV_STEP_SUBSTEPS mirrors the env's control_decimation so the physics
-# delta corresponds to the same number of MuJoCo sub-steps the env applies
-# per action.
-_ENV_STEP_SUBSTEPS = 10
+# The physics delta must cover exactly the sub-steps the env applies per action,
+# so the count is imported from the env rather than duplicated here.
+_ENV_STEP_SUBSTEPS = ENV_STEP_SUBSTEPS
 
 # The floating Allegro env treats action[:6] as a direct base-qvel override
 # rather than an actuator command, so the nominal step must apply it to match

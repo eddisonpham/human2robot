@@ -18,6 +18,10 @@ _CONTACT_DIM = 5
 _OBSERVATION_DIM = 64
 _BASE_VEL_SCALE = np.array([0.15, 0.15, 0.15, 0.8, 0.8, 0.8], dtype=np.float64)
 
+# MuJoCo sub-steps applied per control action. The nominal physics provider
+# imports this so a simulated step and a real step stay in lockstep.
+ENV_STEP_SUBSTEPS = 10
+
 
 def _asset_path() -> Path:
     """Return the local Menagerie Allegro asset path."""
@@ -173,7 +177,7 @@ class AllegroPickupEnv(gym.Env[np.ndarray, np.ndarray]):
         self.data.ctrl[:] = self._actuator_low + (action[6:] + 1.0) * 0.5 * (
             self._actuator_high - self._actuator_low
         )
-        for _ in range(10):
+        for _ in range(ENV_STEP_SUBSTEPS):
             mujoco.mj_step(self.model, self.data)
         self._step_count += 1
         object_z = float(self.data.qpos[self._object_qpos + 2])
