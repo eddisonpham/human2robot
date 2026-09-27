@@ -84,6 +84,7 @@ def export_actor(
     manifest_file = (
         Path(manifest_path) if manifest_path else output.with_suffix(".json")
     )
+    manifest_file.parent.mkdir(parents=True, exist_ok=True)
     manifest_file.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     return output
 

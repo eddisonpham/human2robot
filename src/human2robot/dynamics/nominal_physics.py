@@ -22,6 +22,11 @@ from human2robot.utils.rotation import rotation_vector as _rotation_vector
 # per action.
 _ENV_STEP_SUBSTEPS = 10
 
+# The floating Allegro env treats action[:6] as a direct base-qvel override
+# rather than an actuator command, so the nominal step must apply it to match
+# the environment the delta is supposed to describe.
+_BASE_VEL_SCALE = np.array([0.15, 0.15, 0.15, 0.8, 0.8, 0.8], dtype=np.float64)
+
 
 def compute_obs_delta(
     model: mujoco._structs.MjModel,
@@ -49,6 +54,7 @@ def compute_obs_delta(
 
     data = mujoco.MjData(model)
     _set_state_from_obs(model, data, obs)
+    _apply_action(model, data, action, ctrl)
 
     for _ in range(_ENV_STEP_SUBSTEPS):
         mujoco.mj_step(model, data)
@@ -125,6 +131,7 @@ def compute_physics_deltas(
 
     data = mujoco.MjData(model)
     _set_state_from_obs(model, data, state)
+    _apply_action(model, data, action, ctrl)
 
     for _ in range(_ENV_STEP_SUBSTEPS):
         mujoco.mj_step(model, data)
@@ -134,14 +141,30 @@ def compute_physics_deltas(
     return np.concatenate([qpos_delta, qvel_delta], dtype=np.float32)
 
 
+def _apply_action(
+    model: mujoco._structs.MjModel,
+    data: mujoco._structs.MjData,
+    action: np.ndarray,
+    ctrl: np.ndarray,
+) -> None:
+    """Apply the env's control semantics: base-qvel override plus actuator ctrl.
+
+    Mirrors AllegroPickupEnv.step, which overwrites the free joint's velocity
+    from action[:6] and maps action[6:] into the actuator ctrl range.
+    """
+    data.qvel[0:6] = action[0, 0:6] * _BASE_VEL_SCALE
+    data.ctrl[:] = ctrl[0]
+
+
 def _quat_delta_to_rotvec_delta(
     quat_delta: np.ndarray, quat_before: np.ndarray
 ) -> np.ndarray:
     """Convert small quaternion delta to rotation vector delta.
 
-    rotvec_delta ≈ 2 * quat_delta.xyz for small angles.
+    rotvec_delta ≈ 2 * quat_delta.xyz for small angles.  The quaternion is in
+    MuJoCo [w,x,y,z] order, so the vector part is columns 1:4.
     """
-    rotvec_delta = 2.0 * quat_delta[:, 0:3]
+    rotvec_delta = 2.0 * quat_delta[:, 1:4]
     return rotvec_delta[0] if rotvec_delta.shape[0] == 1 else rotvec_delta
 
 
@@ -262,7 +285,7 @@ def _initial_qvel_from_obs(
 
 
 def _rotvec_to_quat(rotvec: np.ndarray) -> np.ndarray:
-    """Convert axis-angle vector to quaternion [x,y,z,w]."""
+    """Convert axis-angle vector to quaternion in MuJoCo [w,x,y,z] order."""
     rotvec = np.asarray(rotvec, dtype=np.float64).copy()
     if rotvec.ndim == 1:
         rotvec = rotvec.reshape(1, 3)
@@ -270,14 +293,14 @@ def _rotvec_to_quat(rotvec: np.ndarray) -> np.ndarray:
     for i in range(rotvec.shape[0]):
         angle = float(np.linalg.norm(rotvec[i]))
         if angle < 1e-12:
-            q[i] = [0.0, 0.0, 0.0, 1.0]
+            q[i] = [1.0, 0.0, 0.0, 0.0]
             continue
         axis = rotvec[i] / angle
         half = angle / 2.0
         s = float(np.sin(half))
         c = float(np.cos(half))
-        q[i, 0:3] = axis * s
-        q[i, 3] = c
+        q[i, 0] = c
+        q[i, 1:4] = axis * s
     return q[0]
 
 

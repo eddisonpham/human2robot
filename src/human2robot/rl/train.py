@@ -218,11 +218,7 @@ def train(
                 env_model = envs.envs[0].unwrapped.model
                 physics_deltas = np.array(
                     [
-                        _phys._physics_delta_to_obs_delta(
-                            env_model,
-                            obs_i,
-                            _phys.compute_physics_deltas(env_model, obs_i, act_i),
-                        )
+                        _phys.compute_obs_delta(env_model, obs_i, act_i)
                         for obs_i, act_i in zip(
                             model_data["obs"], model_data["acts"], strict=True
                         )
@@ -244,11 +240,7 @@ def train(
             if config.dynamics_aug.mode == "residual":
                 synthetic_physics_deltas = np.array(
                     [
-                        _phys._physics_delta_to_obs_delta(
-                            env_model,
-                            obs_i,
-                            _phys.compute_physics_deltas(env_model, obs_i, act_i),
-                        )
+                        _phys.compute_obs_delta(env_model, obs_i, act_i)
                         for obs_i, act_i in zip(
                             model_data["obs"][: config.sac.batch_size],
                             sac.act(model_data["obs"][: config.sac.batch_size]),
