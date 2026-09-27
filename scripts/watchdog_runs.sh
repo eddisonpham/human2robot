@@ -14,6 +14,7 @@ shift
 STALL_SECONDS=$((STALL_MINUTES * 60))
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT" || exit 1
+LOCK="${ROOT}/logs/.watchdog.lock"
 
 log() { echo "[watchdog $(date +%H:%M:%S)] $*"; }
 
@@ -51,6 +52,19 @@ seed_for() {
 }
 
 log "watching ${#} runs with a ${STALL_MINUTES} minute stall threshold: $*"
+
+# Refuse to start if another watchdog is already running. Two watchdogs will
+# fight: one kills a run the other immediately restarts, and a run cancelled on
+# purpose gets resurrected as an endless relaunch loop.
+if [ -f "$LOCK" ]; then
+  existing=$(cat "$LOCK" 2>/dev/null || echo "")
+  if [ -n "$existing" ] && kill -0 "$existing" 2>/dev/null; then
+    log "another watchdog is already running (pid $existing); refusing to start"
+    exit 1
+  fi
+fi
+echo $$ > "$LOCK"
+trap 'rm -f "$LOCK"' EXIT
 
 while true; do
   sleep 300
