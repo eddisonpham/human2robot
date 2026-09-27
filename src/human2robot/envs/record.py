@@ -98,6 +98,7 @@ class RunRecorder:
         self.lock = RunLock(self.run_dir / ".run.lock")
         self.lock.acquire()
         self.checkpoint_dir = self.run_dir / "checkpoints"
+        self.pause_path = self.run_dir / "PAUSE"
         try:
             self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
             config_path = self.run_dir / "config.yaml"
@@ -119,6 +120,19 @@ class RunRecorder:
     def mark_completed(self) -> None:
         """Record successful completion without releasing run ownership."""
         self._write_status("completed")
+
+    def pause_requested(self) -> bool:
+        """Return whether a pause has been requested for this run.
+
+        Windows offers no way to deliver SIGTERM to a detached process, so pause
+        is requested by creating a sentinel file in the run directory, which the
+        training loop polls.
+        """
+        return self.pause_path.exists()
+
+    def clear_pause(self) -> None:
+        """Remove any pause sentinel, used after a resume."""
+        self.pause_path.unlink(missing_ok=True)
 
     def mark_paused(self, step: int) -> None:
         """Record that the run stopped early at *step* and can be resumed."""

@@ -242,3 +242,24 @@ def test_training_loop_installs_and_restores_signal_handlers() -> None:
     )
     train(config)
     assert signal.getsignal(signal.SIGTERM) is before
+
+
+def test_pause_sentinel_is_polled_and_cleared_on_resume(tmp_path) -> None:
+    """The PAUSE file is the only pause channel Windows offers a detached run."""
+    from human2robot.config.schema import ExperimentConfig as EC
+    from human2robot.envs.record import RunRecorder
+
+    config = EC(
+        experiment_id="sentinel", env_id="Pendulum-v1", results_dir=str(tmp_path)
+    )
+    recorder = RunRecorder(config, str(tmp_path))
+    try:
+        assert recorder.pause_requested() is False
+        recorder.pause_path.write_text("", encoding="utf-8")
+        assert recorder.pause_requested() is True
+        recorder.clear_pause()
+        assert recorder.pause_requested() is False
+        # Clearing twice must not raise, since resume may run on a clean dir.
+        recorder.clear_pause()
+    finally:
+        recorder.close()

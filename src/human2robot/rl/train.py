@@ -158,6 +158,7 @@ def train(
 
     start_step = 0
     if resume:
+        recorder.clear_pause()
         latest = recorder.latest_checkpoint()
         if latest is not None:
             start_step = _load_resume_checkpoint(
@@ -230,8 +231,12 @@ def train(
     while global_step < config.total_env_steps:
         if paused:
             break
+        # Poll the pause sentinel every step. Signals cannot be delivered to a
+        # detached process on Windows, so this file is the only pause channel.
+        if global_step % 100 < config.num_envs and recorder.pause_requested():
+            _request_pause(signal.SIGTERM if hasattr(signal, "SIGTERM") else 15, None)
         if _pause_after is not None and global_step >= _pause_after:
-            # Test hook: exercises the same code path a real SIGTERM takes.
+            # Test hook: exercises the same code path a real pause takes.
             _request_pause(signal.SIGTERM if hasattr(signal, "SIGTERM") else 15, None)
         if global_step < config.start_steps:
             actions = np.stack(
