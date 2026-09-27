@@ -10,7 +10,7 @@ learn to control a robot hand, or is the extra machinery wasted engineering?**
 The honest answer so far is "mostly no", and proving that rigorously is most of
 the work. See [`REVIEW_STATUS.md`](REVIEW_STATUS.md) for current results.
 
-- Build specification: [`agents/`](agents/) — start at
+- Build specification: [`agents/`](agents/) - start at
   [`agents/00_INDEX.md`](agents/00_INDEX.md)
 - Experiment results and open issues: [`REVIEW_STATUS.md`](REVIEW_STATUS.md)
 - Investigations: [`docs/`](docs/)
@@ -113,8 +113,41 @@ two watchdogs from fighting and from resurrecting a deliberately cancelled run.
 
 ### Results
 
+Three seeds each on the Tier B pickup task, 2,000,004 steps per run:
+
+| Condition | Seed means (eval return) | Mean +/- sd |
+| --- | --- | --- |
+| A from-scratch SAC | -46.0, -46.8, -54.9 | -49.2 +/- 4.9 |
+| B BC-init + demo replay | -49.1, -51.6, -52.2 | -51.0 +/- 1.6 |
+| C blackbox dynamics augmentation | -43.9, -54.8, -41.9 | -46.9 +/- 6.9 |
+
+**The three conditions are indistinguishable**, and no run reaches a positive
+return, so the task is unsolved. D and E are not in the table because they
+cannot produce a meaningful number: the nominal physics model is the simulator
+itself, so the residual they are meant to learn is identically zero. See
+[`docs/FINDINGS_residual_degeneracy.md`](docs/FINDINGS_residual_degeneracy.md).
+
+These numbers only became measurable after a fix. The observation rotation
+conversion divided by `2 * sin(angle)`, which is singular at 180 degrees, and a
+free-falling object hits that routinely. The affected dimensions feed the
+critic, so every critic target was poisoned:
+
+| Measurement | Before | After |
+| --- | --- | --- |
+| max abs observation over 60k env steps | 6.35e8 | 71-84 |
+| max `qf_loss` in a 2M-step run | 1.9e15 | 1,844 (worst of 9 runs) |
+| `qf_loss` spikes above 1e3 per run | hundreds to 1000+ | 0 (A, C) or 15-16 (B) |
+
+No run in any of the three conditions records a `qf_loss` spike above 1e6.
+
+The bug had produced a headline result of its own: "BC-init beats from-scratch
+SAC by 48 percent". After the fix that gap does not reproduce. Two other
+apparently empirical findings turned out to be code artifacts the same way, and
+all three are written up in
+[`REVIEW_STATUS.md`](REVIEW_STATUS.md).
+
 Regenerate every result table directly from the recorded metrics, so the
-numbers in `REVIEW_STATUS.md` cannot drift from what is on disk:
+numbers above cannot drift from what is on disk:
 
 ```bash
 uv run python scripts/summarize_ablation.py --markdown
