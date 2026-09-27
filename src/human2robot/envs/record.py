@@ -120,6 +120,10 @@ class RunRecorder:
         """Record successful completion without releasing run ownership."""
         self._write_status("completed")
 
+    def mark_paused(self, step: int) -> None:
+        """Record that the run stopped early at *step* and can be resumed."""
+        self._write_status("paused", {"step": int(step)})
+
     def mark_failed(self, error: BaseException) -> None:
         """Record a failed run and its error type before cleanup."""
         self._write_status(

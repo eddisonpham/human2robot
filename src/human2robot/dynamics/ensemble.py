@@ -74,6 +74,48 @@ class DynamicsEnsemble:
         self._fitted = False
         self._reward_fitted = False
 
+    def state_dict(self) -> dict:
+        """Capture the full ensemble state for checkpointing.
+
+        Without this a resumed run restarts with an untrained ensemble and must
+        refit from scratch, which costs far more wall clock than the replay
+        rewind that a normal resume already pays.
+        """
+        return {
+            "models": [model.state_dict() for model in self.models],
+            "reward_models": [model.state_dict() for model in self.reward_models],
+            "optimizers": [optimizer.state_dict() for optimizer in self.optimizers],
+            "state_mean": self.state_mean,
+            "state_std": self.state_std,
+            "delta_mean": self.delta_mean,
+            "delta_std": self.delta_std,
+            "reward_mean": self.reward_mean,
+            "reward_std": self.reward_std,
+            "fitted": self._fitted,
+            "reward_fitted": self._reward_fitted,
+        }
+
+    def load_state_dict(self, state: dict) -> None:
+        """Restore a state captured by state_dict."""
+        for model, weights in zip(self.models, state["models"], strict=True):
+            model.load_state_dict(weights)
+        for model, weights in zip(
+            self.reward_models, state["reward_models"], strict=True
+        ):
+            model.load_state_dict(weights)
+        for optimizer, optimizer_state in zip(
+            self.optimizers, state["optimizers"], strict=True
+        ):
+            optimizer.load_state_dict(optimizer_state)
+        self.state_mean = np.asarray(state["state_mean"], dtype=np.float32)
+        self.state_std = np.asarray(state["state_std"], dtype=np.float32)
+        self.delta_mean = np.asarray(state["delta_mean"], dtype=np.float32)
+        self.delta_std = np.asarray(state["delta_std"], dtype=np.float32)
+        self.reward_mean = float(state["reward_mean"])
+        self.reward_std = float(state["reward_std"])
+        self._fitted = bool(state["fitted"])
+        self._reward_fitted = bool(state["reward_fitted"])
+
     def fit(
         self,
         states: np.ndarray,

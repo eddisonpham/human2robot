@@ -8,6 +8,7 @@ provider is configured.
 
 import argparse
 import random
+import signal
 
 import numpy as np
 import torch
@@ -71,7 +72,25 @@ def _restore_rng_state(state: dict) -> None:
         torch.cuda.set_rng_state_all([item.cpu() for item in state["cuda"]])
 
 
-def _load_resume_checkpoint(path, sac, buffer, rng) -> int:
+def _checkpoint_state(sac, buffer, dynamics_model, global_step, rng) -> dict:
+    """Assemble the full resumable trainer state.
+
+    The dynamics ensemble is included so a resumed run does not have to refit
+    every member from scratch, which dominates the cost of a resume.
+    """
+    state = {
+        "sac": sac.state_dict(),
+        "buffer": buffer.state_dict(),
+        "global_step": global_step,
+        "replay_rng": rng.bit_generator.state,
+        "rng": _rng_state(),
+    }
+    if dynamics_model is not None:
+        state["dynamics"] = dynamics_model.state_dict()
+    return state
+
+
+def _load_resume_checkpoint(path, sac, buffer, rng, dynamics_model=None) -> int:
     """Restore trainer state from a checkpoint, return its global step."""
     checkpoint = torch.load(path, map_location=sac.device, weights_only=False)
     sac.load_state_dict(checkpoint["sac"])
@@ -81,6 +100,8 @@ def _load_resume_checkpoint(path, sac, buffer, rng) -> int:
         rng.bit_generator.state = checkpoint["replay_rng"]
     if checkpoint.get("rng") is not None:
         _restore_rng_state(checkpoint["rng"])
+    if dynamics_model is not None and checkpoint.get("dynamics") is not None:
+        dynamics_model.load_state_dict(checkpoint["dynamics"])
     return int(checkpoint["global_step"])
 
 
@@ -89,6 +110,7 @@ def train(
     resume: bool = False,
     run_dir_override: str | None = None,
     run_name: str | None = None,
+    _pause_after: int | None = None,
 ) -> dict[str, float]:
     """Run one training job from a validated config, return final metrics."""
     if run_name is not None:
@@ -118,13 +140,6 @@ def train(
         device,
     )
 
-    start_step = 0
-    if resume:
-        latest = recorder.latest_checkpoint()
-        if latest is not None:
-            start_step = _load_resume_checkpoint(latest, sac, buffer, rng)
-            print(f"Resumed from {latest} at step {start_step}", flush=True)
-
     dynamics_model = None
     synthetic_buffer = None
     dynamics_start = max(config.start_steps, config.sac.batch_size)
@@ -140,6 +155,16 @@ def train(
         synthetic_buffer = ReplayBuffer(
             obs_dim, act_dim, config.sac.buffer_size // 4, rng
         )
+
+    start_step = 0
+    if resume:
+        latest = recorder.latest_checkpoint()
+        if latest is not None:
+            start_step = _load_resume_checkpoint(
+                latest, sac, buffer, rng, dynamics_model
+            )
+            print(f"Resumed from {latest} at step {start_step}", flush=True)
+
     demo_buffer = None
     if config.demo.enabled:
         demos = _demo_transitions(config, config.seed)
@@ -176,6 +201,26 @@ def train(
 
     obs, _ = envs.reset(seed=worker_seed(config.seed, 0))
     global_step = start_step
+
+    # A pause request should cost nothing, so a signal takes a final checkpoint
+    # at the current step and then unwinds through the normal close path.
+    paused = False
+
+    def _request_pause(signum, _frame) -> None:
+        nonlocal paused
+        paused = True
+        print(f"pause requested (signal {signum}); checkpointing", flush=True)
+
+    previous_handlers = {}
+    for signal_name in ("SIGINT", "SIGTERM", "BREAK"):
+        sig = getattr(signal, signal_name, None)
+        if sig is None:
+            continue
+        try:
+            previous_handlers[sig] = signal.signal(sig, _request_pause)
+        except (ValueError, OSError):
+            continue
+
     next_eval = (
         (start_step // config.eval.interval_steps) + 1
     ) * config.eval.interval_steps
@@ -183,6 +228,11 @@ def train(
     last_eval_step: int | None = None
 
     while global_step < config.total_env_steps:
+        if paused:
+            break
+        if _pause_after is not None and global_step >= _pause_after:
+            # Test hook: exercises the same code path a real SIGTERM takes.
+            _request_pause(signal.SIGTERM if hasattr(signal, "SIGTERM") else 15, None)
         if global_step < config.start_steps:
             actions = np.stack(
                 [envs.single_action_space.sample() for _ in range(config.num_envs)]
@@ -320,25 +370,30 @@ def train(
         if global_step % config.checkpoint_interval < config.num_envs:
             recorder.save_checkpoint(
                 global_step,
-                {
-                    "sac": sac.state_dict(),
-                    "buffer": buffer.state_dict(),
-                    "global_step": global_step,
-                    "replay_rng": rng.bit_generator.state,
-                    "rng": _rng_state(),
-                },
+                _checkpoint_state(sac, buffer, dynamics_model, global_step, rng),
             )
 
+    for sig, handler in previous_handlers.items():
+        signal.signal(sig, handler)
+
     envs.close()
+
+    if paused:
+        # Label the checkpoint with the step we actually reached, not the run's
+        # target, so a resume restarts from here rather than believing it is done.
+        final = recorder.save_checkpoint(
+            global_step,
+            _checkpoint_state(sac, buffer, dynamics_model, global_step, rng),
+        )
+        recorder.mark_paused(global_step)
+        writer.close()
+        recorder.close()
+        print(f"Paused at step {global_step}. Checkpoint: {final}", flush=True)
+        return {}
+
     final = recorder.save_checkpoint(
         config.total_env_steps,
-        {
-            "sac": sac.state_dict(),
-            "buffer": buffer.state_dict(),
-            "global_step": global_step,
-            "replay_rng": rng.bit_generator.state,
-            "rng": _rng_state(),
-        },
+        _checkpoint_state(sac, buffer, dynamics_model, global_step, rng),
     )
     final_metrics = evaluate(sac, config.env_id, config.eval.episodes, config.seed)
     if last_eval_step != global_step:
