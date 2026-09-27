@@ -148,28 +148,8 @@ def main(argv: list[str]) -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     sys.path.insert(0, str(_PROJECT_ROOT / "src"))
-    import importlib.util
-
-    processing_spec = importlib.util.spec_from_file_location(
-        "h2r_processing",
-        _PROJECT_ROOT / "src/human2robot/data/processing.py",
-    )
-    processing = importlib.util.module_from_spec(processing_spec)
-    sys.modules["h2r_processing"] = processing
-    processing_spec.loader.exec_module(processing)
-
-    schema_spec = importlib.util.spec_from_file_location(
-        "h2r_schema", _PROJECT_ROOT / "src/human2robot/data/schema.py"
-    )
-    schema = importlib.util.module_from_spec(schema_spec)
-    sys.modules["h2r_schema"] = schema
-    schema_spec.loader.exec_module(schema)
-
-    demo_actions = processing.demo_actions
-    smooth = processing.smooth
-    differentiate = processing.differentiate
-    DemoTrajectory = schema.DemoTrajectory
-    DEMO_SCHEMA_VERSION = schema.DEMO_SCHEMA_VERSION
+    from human2robot.data.processing import demo_actions, differentiate, smooth
+    from human2robot.data.schema import DEMO_SCHEMA_VERSION, DemoTrajectory
 
     retargeting = build_dexpilot()
 
