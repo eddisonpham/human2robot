@@ -19,6 +19,6 @@ dynamics_aug:
   ensemble_size: 5
   rollout_horizon: 1
   synthetic_ratio: 0.5
-  retrain_every_steps: 250
+  retrain_every_steps: 2500
   lr: 3e-4
   batch_size: 256
