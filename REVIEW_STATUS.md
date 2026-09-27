@@ -71,7 +71,46 @@ the old ratio and the new retrain interval gave max q_loss 305 and zero spikes,
 which establishes the retune as a compute fix rather than a stability crutch.
 The instability was the rotation bug, not the augmentation ratio.
 
+## Third fix: the residual physics delta did not match the simulator
+
+Found while chasing the coverage gap, not by any training symptom.
+
+`dynamics/nominal_physics.py` had **13 percent test coverage** and three real
+bugs underneath it:
+
+1. `compute_obs_delta` and `compute_physics_deltas` built a `ctrl` vector and
+   then never assigned it to `data.ctrl`. The simulated step ran with zero
+   actuator force.
+2. Neither function applied the env's base-qvel override. `AllegroPickupEnv.step`
+   treats `action[:6]` as a direct free-joint velocity command, not an actuator
+   input; the nominal step ignored it.
+3. `_rotvec_to_quat` returned `[x, y, z, w]` where MuJoCo's `qpos` expects
+   `[w, x, y, z]`, so reconstructed states were misoriented. The same ordering
+   mistake appeared in `_quat_delta_to_rotvec_delta`, which read the vector part
+   from columns `0:3` (that is `w, x, y`) instead of `1:4`.
+
+Measured against real `AllegroPickupEnv` steps, the delta was wrong by a median
+of **12.9 per step** on a scale where the deltas themselves are order 1. The
+consequence: **Conditions D and E were training their residual ensembles
+against physics that did not describe the simulator they were modeling.** Their
+reported results are not evidence about residual dynamics augmentation.
+
+After the fix, `compute_obs_delta` reproduces a real env step to float32
+precision (max error 1.7e-6 over 80 random steps). `train.py` now calls it
+directly instead of routing through the lossy qpos/qvel compatibility chain.
+`tests/python/test_nominal_physics.py` (23 tests) pins the equivalence against
+the live environment, so this cannot silently regress.
+
+Commit `87bd57b`. The D/E seed 0 runs were moved to
+`results/_prefix_archive/tier_b_pickup_cond_{d,e}_s0_badphysics` and D/E are
+being re-run from scratch on the corrected delta.
+
 ## Results, all conditions
+
+Conditions D and E below are from the **quarantined** runs described above and
+are retained only to show what the broken physics produced. Do not read them as
+results for residual augmentation; the replacement runs are in flight. A, B, and
+C are unaffected, since C is blackbox and never calls the physics delta path.
 
 Trajectory summary (mean/median/best/worst/final over all evals in the run):
 
@@ -80,8 +119,8 @@ Trajectory summary (mean/median/best/worst/final over all evals in the run):
 | A (from-scratch SAC) | 3 | -48.9 | -9.5 | -2.4 | -495.1 | -5.2 |
 | B (BC-init + demo replay) | 3 | -51.0 | -14.6 | -1.9 | -577.8 | -12.5 |
 | C (blackbox dynamics aug) | 1 | -43.9 | -9.8 | -2.9 | -423.6 | -17.0 |
-| D (residual dynamics aug) | 1 | -54.6 | -15.2 | -3.0 | -367.4 | -39.2 |
-| E (demos + residual dynamics aug) | 1 | -48.0 | -14.7 | -3.7 | -417.3 | -35.1 |
+| D (residual dynamics aug) | 0 valid | QUARANTINED | - | - | - | - | - |
+| E (demos + residual dynamics aug) | 0 valid | QUARANTINED | - | - | - | - | - |
 
 Per run, with critic health:
 
@@ -94,20 +133,20 @@ Per run, with critic health:
 | B | s1 | completed | 2000004 | 100 | -51.6 | 0.1337 | 1398 | 16 | 0 |
 | B | s2 | completed | 2000004 | 100 | -52.2 | 0.122 | 1369 | 15 | 0 |
 | C | s0 | completed | 2000004 | 100 | -43.9 | 0.05564 | 467.6 | 0 | 0 |
-| D | s0 | completed | 2000004 | 100 | -54.6 | 0.08171 | 396.6 | 0 | 0 |
-| E | s0 | completed | 2000004 | 100 | -48.0 | 0.1846 | 2780 | 32 | 0 |
+| D | s0 | quarantined, re-running | - | - | - | - | - | - | - |
+| E | s0 | quarantined, re-running | - | - | - | - | - | - | - |
 
 What this table says:
 
 - **No 1e6-scale explosions anywhere.** The failure mode is gone.
 - **A vs B is a null result.** A -48.9 +/- 5.3, B -51.0 +/- 1.6. B is
   marginally *worse* and the gap is well inside seed noise. Three seeds each.
-- **B and E still show mild 1e3-scale spikes** (15-32 per run, max ~2.8e3).
-  A, C, D show none. Demo-seeded replay is the common factor. Not urgent, but
-  it is the one remaining critic-health difference between conditions.
-- **C, D, E are one seed each.** Their ordering in the mean column is not
-  evidence. The A-vs-B comparison is the only one with enough seeds to mean
-  anything.
+- **B still shows mild 1e3-scale spikes** (15-16 per run, max 1.8e3). A and C
+  show none. Demo-seeded replay is the common factor in B and the quarantined
+  E. Not urgent, but it is the one remaining critic-health difference between
+  the conditions that have valid data.
+- **C has one valid seed.** Its -43.9 is a lead, not a finding. A vs B remains
+  the only comparison with enough seeds to mean anything.
 - Absolute returns are all negative because the reward is shaped around object
   lift plus a success bonus and the agent rarely picks the object up. No run
   reaches a positive return.
@@ -142,9 +181,26 @@ is undiagnosed.**
   `results/tier_b_pickup_cond_<letter>_s<seed>/metrics.jsonl` and
   `run_status.json`, so this document cannot drift from the metrics.
 - `configs/tier_b_cond_{c,d,e}.yaml`: `retrain_every_steps` 250 -> 2500.
+- `src/human2robot/export/onnx.py`: `export_actor` now creates the parent
+  directory of an explicitly requested manifest path, which previously raised
+  `FileNotFoundError` for any nested manifest.
 
 Pre-fix runs are quarantined in `results/_prefix_archive/*_prefix` so they
-cannot be mistaken for the corrected results.
+cannot be mistaken for the corrected results, and the bad-physics D/E runs in
+`results/_prefix_archive/*_badphysics`.
+
+## Coverage tests added
+
+- `tests/python/test_nominal_physics.py` (new, 23 tests): pins the nominal
+  physics delta to real environment steps, plus the ctrl mapping, state
+  reconstruction, quaternion conventions, and the unwired ensemble wrapper.
+- `tests/python/test_eval_cli_coverage.py` (new, 10 tests): the
+  `domain_randomized_eval` sweep, the plot CLI, and the benchmark CLI including
+  its malformed-group rejection.
+- `tests/python/test_onnx_export.py` (+6 tests): `_build_sac`, checkpoint
+  export with parity validation, explicit manifest paths, and the CLI.
+- `tests/python/test_sb3_check.py` (+3 tests): the SB3 CLI's config-to-kwargs
+  translation, timestep override, and output-dir defaulting.
 
 ## Open issues
 
@@ -154,19 +210,21 @@ cannot be mistaken for the corrected results.
    simultaneously. Random exploration for 10k steps essentially never finds
    that. This is the underlying difficulty and it limits what any of these
    conditions can show.
-2. **C, D, E need seeds 1 and 2.** They currently have one seed each, so the
-   only multi-seed comparison in the matrix is A vs B, which is a null result.
-   C is the most promising lead at -43.9 and is worth the seeds.
+2. **C needs seeds 1 and 2; D and E need to be re-established entirely.** C is
+   the most promising lead at -43.9 and its seed 1 is in flight. D and E have no
+   valid data at all until the corrected re-runs finish, so the residual
+   dynamics conditions are currently untested rather than merely underpowered.
 3. **Undiagnosed training hang** at 1.6M-1.9M steps, four occurrences.
    Mitigated by resume, not fixed.
 4. **B and E retain 1e3-scale qf spikes.** Small, but the only remaining
    critic-health difference between conditions.
-5. **Coverage**: `pytest tests/python/ --no-cov` gives 204 passed, 1 skipped,
-   1 deselected. `ruff check .` and `ruff format --check .` both pass. The
-   coverage gate in pyproject is 90% and currently measures 85.62%, which is a
-   pre-existing gap in modules the suite does not exercise (`onnx.py` 60%,
-   `plot_cli` 56%, `robustness` 50%, `sb3_check` 76%, demo 83%, train 87%). New
-   code from this session is well covered. Not addressed here.
+5. **Coverage is fixed**: 95.25 percent, above the 90 percent gate, with 246
+   tests passing. The gate had been failing at 85.62 percent. The gap was not
+   mainly in the previously identified modules; `nominal_physics.py` at 13
+   percent was the single largest hole and is where the physics bug was hiding.
+   `onnx.py` is now 99%, `robustness.py` 100%, `sb3_check.py` 98%,
+   `plot_cli.py` 96%, `benchmark.py` 94%. `train.py` remains at 87% and
+   `demo.py` at 83%.
 6. **Push**: not attempted. No remote access configured in this environment.
 
 ## How to read this as a human
@@ -179,7 +237,14 @@ earlier 48 percent advantage for B was an artifact of the bug and does not
 reproduce.
 
 Blackbox dynamics augmentation (C) is the most promising direction at -43.9 on
-one seed, and residual augmentation (D) is the weakest at -54.6. Both need more
-seeds before either is a finding. The task itself is unsolved by every
-condition: all returns are negative, so the absolute numbers mostly measure how
-slowly each run accumulates the dense shaping terms rather than task competence.
+one seed. **Residual augmentation (D, E) has no valid result yet**: the physics
+delta those conditions depend on did not match the simulator, so their earlier
+numbers are quarantined and being re-run.
+
+The pattern across this session is worth stating plainly: twice now, an
+apparently empirical finding (BC-init's 48 percent advantage, then residual
+augmentation's apparent weakness) turned out to be an artifact of an
+unexercised code path rather than a property of the method. Neither had test
+coverage that would have caught it. The task itself is also unsolved by every
+condition, so the absolute numbers mostly measure how slowly each run
+accumulates the dense shaping terms rather than task competence.
