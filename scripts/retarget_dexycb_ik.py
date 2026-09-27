@@ -8,6 +8,13 @@ angles with DexPilot (vector retargeting, scaling 1.6, low-pass 0.2).
 Output NPZs follow the standard demo schema (22-dim q, base zeros) so the
 C++ optimizer and downstream BC consume them unchanged.
 
+Usage:
+
+    uv run python scripts/retarget_dexycb_ik.py [link_length] [subject] [subject_dir]
+
+All three arguments are optional and default to 0.032,
+``20200709-subject-01``, and ``data/raw/dexycb/<subject>``.
+
 MANO parent tree (wrist + 15 joints), fingertip joints 3/6/9/12 per
 finger chain, and DexPilot's 20-keypoint MANO layout follow the published
 MANO model and dex-retargeting conventions.
@@ -28,7 +35,7 @@ _FINGERTIP_JOINTS = (3, 6, 9, 12)
 
 _FINGER_KEYPOINT_BASES = (1, 5, 9, 13)
 
-_PROJECT_ROOT = Path("/mnt/c/Users/phamt/Projects/human2robot/human2robot")
+_PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 _ALLEGRO_LOW = np.array(
     [0.0] * 6 + [-0.47] + [0.196] * 3 + [-0.175] + [0.0] * 8 + [-0.8] * 3
@@ -125,10 +132,20 @@ _ROBOT_TO_MANO = np.array(
 
 
 def main(argv: list[str]) -> int:
-    subject_dir = _PROJECT_ROOT / "data/raw/dexycb/20200709-subject-01"
+    link_length = float(argv[1]) if len(argv) > 1 else 0.032
+    subject = argv[2] if len(argv) > 2 else "20200709-subject-01"
+    subject_dir = (
+        Path(argv[3]) if len(argv) > 3 else _PROJECT_ROOT / "data/raw/dexycb" / subject
+    )
+    if not subject_dir.is_dir():
+        print(
+            f"subject dir not found: {subject_dir}\n"
+            "run scripts/download_dexycb.sh first, or pass a path as argv[3]",
+            file=sys.stderr,
+        )
+        return 1
     out_dir = _PROJECT_ROOT / "data/demonstrations_dexycb_ik"
     out_dir.mkdir(parents=True, exist_ok=True)
-    link_length = float(argv[1]) if len(argv) > 1 else 0.032
 
     sys.path.insert(0, str(_PROJECT_ROOT / "src"))
     import importlib.util

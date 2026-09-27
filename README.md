@@ -19,7 +19,9 @@ so far is "mostly no", and proving that rigorously is most of the work. See
 
 - Build specification: [`agents/`](agents/) - start at
   [`agents/00_INDEX.md`](agents/00_INDEX.md)
-- Experiment results and open issues: [`REVIEW_STATUS.md`](REVIEW_STATUS.md)
+- Results for both the conversion pipeline and the ablation:
+  [`docs/RESULTS.md`](docs/RESULTS.md)
+- Ablation status and open issues: [`REVIEW_STATUS.md`](REVIEW_STATUS.md)
 - Investigations: [`docs/`](docs/)
 
 ## Requirements
@@ -240,7 +242,7 @@ configs/         Run configurations, validated against the schemas
 tests/python/    pytest suite, coverage-gated at 90 percent
 scripts/         Setup, data, and long-run operations
 agents/          Read-only build specification
-docs/            Investigations and design notes
+docs/            Results, investigations, and design notes
 ```
 
 `data/`, `results/`, `logs/`, and `references/` are gitignored: they hold
