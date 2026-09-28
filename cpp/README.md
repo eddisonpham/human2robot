@@ -4,7 +4,7 @@ Standalone C++20 library for trajectory validation, projection, and
 optimization over retargeted robot demonstrations, plus pybind11 bindings
 consumed by `src/human2robot/cpp_bindings/`.
 
-Spec: `docs/HANDOFF_RESPONSE.md` sections 3, 5, 14, 17, 18, 19.
+Spec: `agents/` in the repository root.
 
 ## Layout
 

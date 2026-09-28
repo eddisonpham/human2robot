@@ -39,7 +39,7 @@ shared a step with a training record. All evaluation returns were destroyed
 across all twelve runs.
 
 `qf_loss`, `actor_loss`, `alpha`, and `q_mean` survived, since those were the
-records being kept. The critic-health columns in `REVIEW_STATUS.md` were
+records being kept. The critic-health columns in `RL_RESULTS.md` were
 unaffected.
 
 ## The recovery

@@ -1,7 +1,7 @@
 """Summarize the Tier B 5-condition ablation matrix from run metrics.
 
 Reads every ``results/tier_b_pickup_cond_<letter>_s<seed>`` run directory and
-prints the trajectory statistics used in REVIEW_STATUS.md, so the writeup can
+prints the trajectory statistics used in docs/RL_RESULTS.md, so the writeup can
 be regenerated from disk rather than transcribed by hand.
 """
 

@@ -57,6 +57,18 @@ SOURCES: dict[str, tuple[str, tuple[str, ...]]] = {
         "real_vs_synthetic_s1.json",
         ("synthetic", "max_jerk_reduction_pct"),
     ),
+    "smoothness_reduction_synthetic": (
+        "real_vs_synthetic_s1.json",
+        ("synthetic", "smoothness_reduction_pct"),
+    ),
+    "velocity_reduction_synthetic": (
+        "real_vs_synthetic_s1.json",
+        ("synthetic", "max_velocity_reduction_pct"),
+    ),
+    "acceleration_reduction_synthetic": (
+        "real_vs_synthetic_s1.json",
+        ("synthetic", "max_acceleration_reduction_pct"),
+    ),
     "smoothness_reduction_s1": (
         "real_vs_synthetic_s1.json",
         ("dexycb", "smoothness_reduction_pct"),
@@ -128,6 +140,10 @@ SOURCES: dict[str, tuple[str, tuple[str, ...]]] = {
     "granularity_prefix_s1": (
         "bc_split_granularity_dexycb.json",
         ("results", "prefix", "advantage_pct", "mean"),
+    ),
+    "granularity_trajectory_synthetic": (
+        "bc_split_granularity_synthetic.json",
+        ("results", "trajectory", "advantage_pct", "mean"),
     ),
     "granularity_transition_s2": (
         "bc_split_granularity_dexycb_s2.json",

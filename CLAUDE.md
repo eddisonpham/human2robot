@@ -7,7 +7,7 @@ Guidance for coding agents working in this repository.
 Human2Robot (formerly DynHand): demonstration-guided SAC for dexterous
 manipulation in MuJoCo, plus a C++ trajectory-optimization subsystem for
 improving retargeted human demonstrations (spec in
-`docs/HANDOFF_RESPONSE.md`). The build specification lives in `agents/`
+`docs/RESULTS.md`). The build specification lives in `agents/`
 (read-only). `agents/00_INDEX.md` is the entry point and defines the
 reading order. Phase order and acceptance tests are in
 `agents/09_PHASE_PLAN.md`; do not start phase N+1 before phase N's
@@ -20,7 +20,7 @@ Renamed from dynhand to human2robot: package is `src/human2robot/`, entry
 points are `human2robot-*`, Tier B env id is `Human2Robot-AllegroPickup-v0`.
 Legacy `results/` directories still use old experiment ids; that is fine.
 
-Python phases (see `docs/HANDOFF.md`): 0-2 done, 3 done inside dynamics
+Python phases (see `docs/RESULTS.md`): 0-2 done, 3 done inside dynamics
 tests, 4/5 scaffolded but unvalidated (no real retargeted demos yet;
 `data/processed` empty; dex-retargeting cannot install on Windows),
 6 done, 7/8 not started, 9 scaffolded, 10 partially (ONNX export done,
@@ -31,7 +31,7 @@ C++ subsystem (active work): `cpp/` builds a standalone C++20 library
 `h2r_traj` plus pybind11 module `h2r_traj` bindings in `src/human2robot/cpp_bindings/`.
 Toolchain on this machine: clang++ 22 (MSVC target) via CMake, no g++ or
 MSVC cl. Use the generator and flags recorded in `cpp/README.md`.
-C++ phases B-G follow `docs/HANDOFF_RESPONSE.md` sections 14, 17, 18, 20.
+C++ phases B-G follow the C++ section of `agents/09_PHASE_PLAN.md`.
 
 ## Environment
 

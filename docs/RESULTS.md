@@ -407,7 +407,7 @@ where the cross-subject 99/100 comes from.
 ## 2. SAC ablation: a null result
 
 Three conditions, three seeds each, 2,000,004 steps per run, on the floating
-Allegro pickup task. Full analysis in [`../REVIEW_STATUS.md`](../REVIEW_STATUS.md).
+Allegro pickup task. Full analysis in [`RL_RESULTS.md`](RL_RESULTS.md).
 
 | Condition | Seed means | Mean +/- sd |
 | --- | --- | --- |

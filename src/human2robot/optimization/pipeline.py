@@ -2,7 +2,7 @@
 
 Reads retargeted demonstrations, runs the C++ optimizer, and writes a
 parallel tree of optimized demos plus a metrics manifest. Raw demos are
-never modified (docs/HANDOFF_RESPONSE.md section 11).
+never modified (see agents/12_NON_GOALS_AND_CUT_SCOPE.md).
 """
 
 from __future__ import annotations

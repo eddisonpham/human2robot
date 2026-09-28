@@ -14,6 +14,13 @@
         "max_acceleration_reduction_pct"
       ]
     ],
+    "acceleration_reduction_synthetic": [
+      "real_vs_synthetic_s1.json",
+      [
+        "synthetic",
+        "max_acceleration_reduction_pct"
+      ]
+    ],
     "bc_controlled_s1": [
       "bc_downstream_dexycb.json",
       [
@@ -218,6 +225,15 @@
         "mean"
       ]
     ],
+    "granularity_trajectory_synthetic": [
+      "bc_split_granularity_synthetic.json",
+      [
+        "results",
+        "trajectory",
+        "advantage_pct",
+        "mean"
+      ]
+    ],
     "granularity_transition_s1": [
       "bc_split_granularity_dexycb.json",
       [
@@ -342,6 +358,13 @@
         "smoothness_reduction_pct"
       ]
     ],
+    "smoothness_reduction_synthetic": [
+      "real_vs_synthetic_s1.json",
+      [
+        "synthetic",
+        "smoothness_reduction_pct"
+      ]
+    ],
     "tail_speed_ratio_control_s1": [
       "tail_extrapolation_dexycb.json",
       [
@@ -382,11 +405,19 @@
         "dexycb",
         "max_velocity_reduction_pct"
       ]
+    ],
+    "velocity_reduction_synthetic": [
+      "real_vs_synthetic_s1.json",
+      [
+        "synthetic",
+        "max_velocity_reduction_pct"
+      ]
     ]
   },
   "figures": {
     "acceleration_reduction_s1": 25.639539698574787,
     "acceleration_reduction_s2": 24.01271470112627,
+    "acceleration_reduction_synthetic": 25.082267755415877,
     "bc_controlled_s1": 29.475790377775258,
     "bc_controlled_s2": 28.954366769029615,
     "bc_controlled_synthetic": 56.75620154863519,
@@ -414,6 +445,7 @@
     "granularity_prefix_synthetic": 40.57233545953987,
     "granularity_trajectory_s1": 25.24992103817622,
     "granularity_trajectory_s2": 33.29620865473694,
+    "granularity_trajectory_synthetic": 50.561071579455515,
     "granularity_transition_s1": 34.72833493308753,
     "granularity_transition_s2": 29.767041921613135,
     "jerk_reduction_s1": 16.75463824264629,
@@ -430,10 +462,12 @@
     "selected_step_size": 0.35,
     "smoothness_reduction_s1": 30.444280389801083,
     "smoothness_reduction_s2": 28.674772191905053,
+    "smoothness_reduction_synthetic": 92.6149524279812,
     "tail_speed_ratio_control_s1": 0.15764665603637695,
     "tail_speed_ratio_optimized_s1": 0.6147880554199219,
     "tail_speed_ratio_raw_synthetic": 0.9674001336097717,
     "velocity_reduction_s1": 71.71659281074064,
-    "velocity_reduction_s2": 72.155973956074
+    "velocity_reduction_s2": 72.155973956074,
+    "velocity_reduction_synthetic": 65.42328100293486
   }
 }
