@@ -10,10 +10,13 @@ C++ optimizer and downstream BC consume them unchanged.
 
 Usage:
 
-    uv run python scripts/retarget_dexycb_ik.py [link_length] [subject] [subject_dir]
+    uv run python scripts/retarget_dexycb_ik.py --subject 20200813-subject-02 \
+        --output-dir data/demonstrations_dexycb_ik_s2
 
-All three arguments are optional and default to 0.032,
-``20200709-subject-01``, and ``data/raw/dexycb/<subject>``.
+Flags are ``--link-length`` (0.032), ``--subject`` (``20200709-subject-01``),
+``--subject-dir`` (``data/raw/dexycb/<subject>``) and ``--output-dir``
+(``data/demonstrations_dexycb_ik``). ``--output-dir`` is required for any
+subject other than subject-01, so a second subject cannot overwrite the first.
 
 MANO parent tree (wrist + 15 joints), fingertip joints 3/6/9/12 per
 finger chain, and DexPilot's 20-keypoint MANO layout follow the published
@@ -22,6 +25,7 @@ MANO model and dex-retargeting conventions.
 
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 import time
@@ -131,20 +135,57 @@ _ROBOT_TO_MANO = np.array(
 )
 
 
-def main(argv: list[str]) -> int:
-    link_length = float(argv[1]) if len(argv) > 1 else 0.032
-    subject = argv[2] if len(argv) > 2 else "20200709-subject-01"
-    subject_dir = (
-        Path(argv[3]) if len(argv) > 3 else _PROJECT_ROOT / "data/raw/dexycb" / subject
+DEFAULT_SUBJECT = "20200709-subject-01"
+DEFAULT_OUT_DIR = _PROJECT_ROOT / "data/demonstrations_dexycb_ik"
+
+
+def _parse_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--link-length", type=float, default=0.032)
+    parser.add_argument("--subject", default=DEFAULT_SUBJECT)
+    parser.add_argument("--subject-dir", default=None)
+    parser.add_argument(
+        "--output-dir",
+        default=None,
+        help=(
+            "Destination for the retargeted demos. Required for any subject "
+            "other than subject-01, whose demos use the historical default."
+        ),
     )
+    return parser.parse_args(argv)
+
+
+def _resolve_output_dir(args: argparse.Namespace) -> Path:
+    """Pick the output directory, refusing to overwrite another subject's demos.
+
+    The subject-01 output is the historical default, so a second subject must
+    name its own directory explicitly. Without this, retargeting subject-02
+    would silently replace subject-01's 100 demos.
+    """
+    if args.output_dir is not None:
+        return Path(args.output_dir)
+    if args.subject == DEFAULT_SUBJECT:
+        return DEFAULT_OUT_DIR
+    raise SystemExit(
+        f"--output-dir is required for {args.subject}: the default output "
+        f"directory holds {DEFAULT_SUBJECT} demos and writing another subject "
+        f"over it would silently replace them"
+    )
+
+
+def main(argv: list[str]) -> int:
+    args = _parse_args(argv[1:])
+    link_length = args.link_length
+    subject = args.subject
+    subject_dir = args.subject_dir or _PROJECT_ROOT / "data/raw/dexycb" / subject
     if not subject_dir.is_dir():
         print(
             f"subject dir not found: {subject_dir}\n"
-            "run scripts/download_dexycb.sh first, or pass a path as argv[3]",
+            "run scripts/download_dexycb.sh first, or pass --subject-dir",
             file=sys.stderr,
         )
         return 1
-    out_dir = _PROJECT_ROOT / "data/demonstrations_dexycb_ik"
+    out_dir = _resolve_output_dir(args)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     sys.path.insert(0, str(_PROJECT_ROOT / "src"))

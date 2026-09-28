@@ -34,13 +34,13 @@ OUT_PATH = Path("results/trajectory_optimization/real_vs_synthetic.json")
 # Subject-02 is held out entirely: no hyperparameter was selected on it.
 SUBJECT_SETS = {
     "subject-01": (
-        Path("data/demonstrations_dexycb"),
-        Path("data/demonstrations_dexycb_optimized"),
+        Path("data/demonstrations_dexycb_ik"),
+        Path("data/demonstrations_dexycb_ik_optimized"),
         Path("results/trajectory_optimization/real_vs_synthetic_s1.json"),
     ),
     "subject-02": (
-        Path("data/demonstrations_dexycb_s2"),
-        Path("data/demonstrations_dexycb_s2_optimized"),
+        Path("data/demonstrations_dexycb_ik_s2"),
+        Path("data/demonstrations_dexycb_ik_s2_optimized"),
         Path("results/trajectory_optimization/real_vs_synthetic_s2.json"),
     ),
 }
@@ -176,11 +176,11 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     dexycb_dir, dexycb_opt_dir, out_path = SUBJECT_SETS[subject]
 
-    dexycb_paths = sorted(dexycb_dir.glob("dexycb_*.npz"))
+    dexycb_paths = sorted(dexycb_dir.glob("*.npz"))
     synth_paths = sorted(p for p in SYNTH_DIR.glob("*.npz") if "_opt" not in p.stem)
     if not dexycb_paths:
         raise FileNotFoundError(
-            "no DexYCB demos; run: uv run python -m human2robot.data.dexycb"
+            "no DexYCB demos; run: uv run python scripts/retarget_dexycb_ik.py"
         )
     if not synth_paths:
         raise FileNotFoundError("run generate_synthetic_demos first")

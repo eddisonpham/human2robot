@@ -278,7 +278,7 @@ def test_compare_missing_dexycb_dir_raises_with_a_command(
         {**compare_script.SUBJECT_SETS, "subject-01": absent},
     )
     monkeypatch.setattr(compare_script, "SYNTH_DIR", tmp_path / "absent2")
-    with pytest.raises(FileNotFoundError, match="human2robot.data.dexycb"):
+    with pytest.raises(FileNotFoundError, match="retarget_dexycb_ik.py"):
         compare_script.main([])
 
 

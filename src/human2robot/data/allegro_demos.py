@@ -7,7 +7,6 @@ import numpy as np
 
 from human2robot.data.processing import demo_actions, differentiate, smooth
 from human2robot.data.schema import DEMO_SCHEMA_VERSION, DemoTrajectory
-from human2robot.envs.allegro import AllegroPickupEnv
 
 
 def _object_trajectory(
@@ -37,6 +36,11 @@ def generate_synthetic_demos(
     rng = np.random.default_rng(seed)
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    # Imported here rather than at module scope: only the synthetic generator
+    # needs MuJoCo, and importing it eagerly makes the whole data package
+    # unimportable in a MuJoCo-free environment such as the WSL retargeting venv.
+    from human2robot.envs.allegro import AllegroPickupEnv
+
     env = AllegroPickupEnv()
     low, high = env._actuator_low, env._actuator_high  # type: ignore[attr-defined]
     generated: list[Path] = []

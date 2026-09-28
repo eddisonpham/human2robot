@@ -28,8 +28,8 @@ from human2robot.cpp_bindings import (
 )
 from human2robot.data.allegro_demos import load_demo_npz
 
-DEXYCB_DIR = Path("data/demonstrations_dexycb")
-DEXYCB_S2_DIR = Path("data/demonstrations_dexycb_s2")
+DEXYCB_DIR = Path("data/demonstrations_dexycb_ik")
+DEXYCB_S2_DIR = Path("data/demonstrations_dexycb_ik_s2")
 SYNTH_DIR = Path("data/demonstrations")
 DEFAULT_OUT = Path("results/trajectory_optimization/optimizer_split.json")
 
@@ -46,7 +46,7 @@ NOISE_SCALE = 0.0
 def load_dexycb(directory: Path = DEXYCB_DIR) -> list[np.ndarray]:
     """Load real trajectories, resampled to the 20 ms control period."""
     out = []
-    for path in sorted(directory.glob("dexycb_*.npz")):
+    for path in sorted(directory.glob("*.npz")):
         demo = load_demo_npz(path)
         q16 = cubic_resample(demo.q[:, 6:], CAPTURE_DT, CONTROL_DT)
         out.append(np.concatenate([np.zeros((len(q16), 6)), q16], axis=1))
@@ -145,7 +145,7 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     subject2 = None
-    if DEXYCB_S2_DIR.is_dir() and list(DEXYCB_S2_DIR.glob("dexycb_*.npz")):
+    if DEXYCB_S2_DIR.is_dir() and list(DEXYCB_S2_DIR.glob("*.npz")):
         subject2 = score(load_dexycb(DEXYCB_S2_DIR), best_step)
         print(
             f"  CROSS-SUBJECT s-2 improved={subject2['improved']}/{subject2['n']} "

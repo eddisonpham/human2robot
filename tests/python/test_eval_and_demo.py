@@ -1,8 +1,5 @@
 """Evaluation env construction, demo loading helpers, and the DexYCB CLI."""
 
-import json
-from pathlib import Path
-
 import numpy as np
 import pytest
 
@@ -124,184 +121,54 @@ def test_load_local_demos_reads_demo_directory(tmp_path):
     assert len(out["obs"]) > 0
 
 
-# --- dexycb CLI ---------------------------------------------------------------
+# --- dexycb ------------------------------------------------------------------
+#
+# The basis retargeter and its demo-building CLI were removed; see
+# docs/FINDINGS_retargeting.md. Retargeting is scripts/retarget_dexycb_ik.py.
+# These cover the sequence discovery and MANO loading that remain, and pin the
+# removal so the degenerate path cannot be reintroduced quietly.
 
 
-def test_dexycb_cli_rejects_missing_subject_dir(tmp_path, capsys):
-    rc = dexycb_mod.main(
-        ["--subject-dir", str(tmp_path / "absent"), "--output-dir", str(tmp_path / "o")]
+def test_discover_sequences_finds_nested_pose_files(tmp_path):
+    for name in ("seq_b", "seq_a"):
+        (tmp_path / name).mkdir()
+        (tmp_path / name / "pose.npz").write_bytes(b"")
+    (tmp_path / "seq_a" / "other.npz").write_bytes(b"")
+    found = dexycb_mod.discover_sequences(tmp_path)
+    assert [p.parent.name for p in found] == ["seq_a", "seq_b"]
+
+
+def test_discover_sequences_on_empty_dir_returns_empty(tmp_path):
+    assert dexycb_mod.discover_sequences(tmp_path) == []
+
+
+def test_load_sequence_reads_mano_and_meta(tmp_path):
+    seq_dir = tmp_path / "seq"
+    seq_dir.mkdir()
+    pose = np.zeros((5, 1, 51), dtype=np.float32)
+    pose[:, 0, 0] = 0.1
+    np.savez(seq_dir / "pose.npz", pose_m=pose, pose_y=np.zeros((5, 1, 8)))
+    (seq_dir / "meta.yml").write_text("num_frames: 3\nother: 1\n")
+    loaded = dexycb_mod.load_sequence(seq_dir / "pose.npz")
+    assert loaded["pose_m"].shape == (3, 51)
+    assert loaded["sequence_id"] == "seq"
+
+
+def test_load_sequence_without_meta_keeps_every_frame(tmp_path):
+    np.savez(
+        tmp_path / "pose.npz",
+        pose_m=np.zeros((4, 1, 51), dtype=np.float32),
+        pose_y=np.zeros((4, 1, 8)),
     )
-    assert rc == 1
-    assert "subject dir not found" in capsys.readouterr().err
+    assert dexycb_mod.load_sequence(tmp_path / "pose.npz")["pose_m"].shape == (4, 51)
 
 
-def test_dexycb_cli_rejects_directory_without_sequences(tmp_path, capsys):
-    subject = tmp_path / "subject"
-    subject.mkdir()
-    rc = dexycb_mod.main(
-        ["--subject-dir", str(subject), "--output-dir", str(tmp_path / "o")]
-    )
-    assert rc == 1
-    assert "no pose.npz sequences" in capsys.readouterr().err
+def test_the_removed_retargeter_raises_rather_than_regenerating_demos():
+    with pytest.raises(NotImplementedError, match="not a retargeting"):
+        dexycb_mod._mano_to_joint_targets(np.zeros((4, 51)))
 
 
-def test_dexycb_cli_defaults_subject_dir_under_project_root(capsys):
-    """With no arguments the subject path must resolve under the repo root.
-
-    Asserted through the missing-directory error rather than a successful run,
-    so the test does not depend on the DexYCB download being present.
-    """
-    project_root = Path(dexycb_mod.__file__).resolve().parents[3]
-    assert dexycb_mod.main(["--subject", "no-such-subject"]) == 1
-    err = capsys.readouterr().err
-    assert str(project_root / "data" / "raw" / "dexycb" / "no-such-subject") in err
-
-
-def test_dexycb_cli_defaults_output_dir_under_project_root(monkeypatch, tmp_path):
-    captured = {}
-    subject = tmp_path / "sub"
-    subject.mkdir()
-    monkeypatch.setattr(dexycb_mod, "discover_sequences", lambda d: [Path("x")])
-    monkeypatch.setattr(
-        dexycb_mod,
-        "build_subject_demos",
-        lambda s, o, seed=0, max_count=None: (
-            captured.update(
-                subject=Path(s), out=Path(o), seed=seed, max_count=max_count
-            )
-            or []
-        ),
-    )
-    rc = dexycb_mod.main(
-        ["--subject-dir", str(subject), "--seed", "5", "--max-count", "2"]
-    )
-    assert rc == 0
-    assert captured["subject"] == subject
-    assert captured["out"].as_posix().endswith("data/demonstrations_dexycb")
-    assert captured["seed"] == 5
-    assert captured["max_count"] == 2
-
-
-def test_dexycb_cli_refuses_to_overwrite_the_default_subject_demos(
-    monkeypatch, tmp_path, capsys
-):
-    """A non-default subject must not silently replace subject-01's demos.
-
-    `--subject` selects the input but the default `--output-dir` holds
-    subject-01's demos, so honouring the default would destroy them.
-    """
-    subject = tmp_path / "s2"
-    subject.mkdir()
-    called = []
-    monkeypatch.setattr(dexycb_mod, "discover_sequences", lambda d: [Path("x")])
-    monkeypatch.setattr(
-        dexycb_mod, "build_subject_demos", lambda *a, **k: called.append(a) or []
-    )
-    rc = dexycb_mod.main(
-        ["--subject-dir", str(subject), "--subject", "20200813-subject-02"]
-    )
-    assert rc == 1
-    assert called == []
-    assert "--output-dir is required" in capsys.readouterr().err
-
-
-def test_dexycb_cli_allows_a_second_subject_with_explicit_output(monkeypatch, tmp_path):
-    captured = {}
-    subject = tmp_path / "sub"
-    subject.mkdir()
-    monkeypatch.setattr(dexycb_mod, "discover_sequences", lambda d: [Path("x")])
-    monkeypatch.setattr(
-        dexycb_mod,
-        "build_subject_demos",
-        lambda s, o, seed=0, max_count=None: (
-            captured.update(subject=Path(s), out=Path(o)) or []
-        ),
-    )
-    out = tmp_path / "s2"
-    rc = dexycb_mod.main(
-        [
-            "--subject-dir",
-            str(subject),
-            "--subject",
-            "20200813-subject-02",
-            "--output-dir",
-            str(out),
-        ]
-    )
-    assert rc == 0
-    assert captured["out"] == out
-
-
-def test_dexycb_cli_honours_explicit_paths(monkeypatch, tmp_path):
-    captured = {}
-    subject = tmp_path / "sub"
-    subject.mkdir()
-    monkeypatch.setattr(dexycb_mod, "discover_sequences", lambda d: [Path("x")])
-    monkeypatch.setattr(
-        dexycb_mod,
-        "build_subject_demos",
-        lambda s, o, seed=0, max_count=None: (
-            captured.update(subject=Path(s), out=Path(o)) or []
-        ),
-    )
-    out = tmp_path / "custom_out"
-    assert (
-        dexycb_mod.main(["--subject-dir", str(subject), "--output-dir", str(out)]) == 0
-    )
-    assert captured["subject"] == subject
-    assert captured["out"] == out
-
-
-def test_build_subject_demos_writes_manifest(tmp_path, monkeypatch):
-    traj = dexycb_mod.DemoTrajectory(
-        q=np.zeros((4, 22), dtype=np.float32),
-        qdot=np.zeros((4, 22), dtype=np.float32),
-        a_demo=np.zeros((4, 22), dtype=np.float32),
-        object_pose=np.zeros((4, 7), dtype=np.float32),
-        object_vel=np.zeros((4, 6), dtype=np.float32),
-        contact=np.zeros((4, 5), dtype=np.float32),
-        trajectory_id="t0",
-        task_id="allegro_pickup",
-        source="unit-test",
-    )
-    monkeypatch.setattr(
-        dexycb_mod, "discover_sequences", lambda d: [Path("a"), Path("b")]
-    )
-    monkeypatch.setattr(dexycb_mod, "sequence_to_demo", lambda p: traj)
-    out = tmp_path / "demos"
-    written = dexycb_mod.build_subject_demos(tmp_path, out, seed=3)
-    assert len(written) == 2
-    manifest = json.loads((out / "manifest.json").read_text())
-    assert manifest["count"] == 2
-    assert manifest["rejected"] == 0
-    assert manifest["rng_seed"] == 3
-    assert (out / ".rng_check").exists()
-
-
-def test_build_subject_demos_counts_rejections_and_honours_max_count(
-    tmp_path, monkeypatch
-):
-    def boom(p):
-        if str(p) == "b":
-            raise ValueError("bad sequence")
-        return dexycb_mod.DemoTrajectory(
-            q=np.zeros((3, 22), dtype=np.float32),
-            qdot=np.zeros((3, 22), dtype=np.float32),
-            a_demo=np.zeros((3, 22), dtype=np.float32),
-            object_pose=np.zeros((3, 7), dtype=np.float32),
-            object_vel=np.zeros((3, 6), dtype=np.float32),
-            contact=np.zeros((3, 5), dtype=np.float32),
-            trajectory_id="t",
-            task_id="allegro_pickup",
-            source="unit-test",
-        )
-
-    monkeypatch.setattr(
-        dexycb_mod, "discover_sequences", lambda d: [Path("a"), Path("b")]
-    )
-    monkeypatch.setattr(dexycb_mod, "sequence_to_demo", boom)
-    out = tmp_path / "demos"
-    written = dexycb_mod.build_subject_demos(tmp_path, out, max_count=1)
-    assert len(written) == 1
-    manifest = json.loads((out / "manifest.json").read_text())
-    assert manifest["seed_used"] is False
+def test_the_module_no_longer_exposes_a_demo_building_cli():
+    """The CLI could only produce degenerate demos, so it is gone."""
+    for gone in ("main", "build_subject_demos", "sequence_to_demo"):
+        assert not hasattr(dexycb_mod, gone), gone

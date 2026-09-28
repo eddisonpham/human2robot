@@ -9,6 +9,10 @@ Each test here corresponds to a real defect found in this codebase:
 - every field the trainer branches on must be reachable from a real config
 """
 
+import sys
+from pathlib import Path
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
 import torch
@@ -22,6 +26,8 @@ from human2robot.config.schema import (
 from human2robot.dynamics import nominal_physics
 from human2robot.envs.allegro import ENV_STEP_SUBSTEPS, AllegroPickupEnv
 from human2robot.rl.networks import GaussianActor
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
 TIER_B_CONFIGS = [
     "configs/tier_b_pickup.yaml",
@@ -162,3 +168,95 @@ def test_vector_worker_seeds_are_distinct() -> None:
     seeds = [worker_seed(100, index) for index in range(12)]
     assert len(set(seeds)) == 12
     assert seeds[0] == 100
+
+
+# --- retargeting dimensionality ------------------------------------------------
+#
+# A published result in this repository measured a 16-DoF hand while the data
+# path under test carried 90 percent of its variance in one dimension. The
+# retargeter summed MANO joint magnitudes into a single per-finger curl scalar
+# and broadcast it to all four joints, so it was not a retargeting at all. Every
+# number derived from it described that scalar, and the smoothness numbers in
+# particular were inflated because there was no structure to preserve.
+
+DEMO_SETS = {
+    "dexycb_ik": "data/demonstrations_dexycb_ik",
+    "dexycb_ik_s2": "data/demonstrations_dexycb_ik_s2",
+    "synthetic": "data/demonstrations",
+}
+DEGENERATE_SETS = {"dexycb": "data/demonstrations_dexycb"}
+
+
+def _stack_finger_positions(directory: str) -> np.ndarray:
+    from human2robot.data.allegro_demos import load_demo_npz
+
+    paths = sorted(Path(directory).glob("*.npz"))
+    assert paths, f"no demos in {directory}"
+    return np.concatenate([load_demo_npz(p).q[:, 6:] for p in paths])
+
+
+def _dims_for_90_percent_variance(q: np.ndarray) -> int:
+    centered = q - q.mean(axis=0)
+    singular = np.linalg.svd(centered, compute_uv=False)
+    share = singular**2 / (singular**2).sum()
+    return int(np.searchsorted(np.cumsum(share), 0.90) + 1)
+
+
+@pytest.mark.parametrize("name", sorted(DEMO_SETS))
+def test_retargeted_demos_are_not_degenerate(name: str) -> None:
+    """A real retargeting must not collapse onto a single degree of freedom.
+
+    The 1-DOF retargeter this pins put 90 percent of the variance in one
+    dimension of 16. A genuine hand retargeting uses most of them.
+    """
+    directory = DEMO_SETS[name]
+    if not Path(directory).is_dir():
+        pytest.skip(f"{name} demos not generated")
+    assert _dims_for_90_percent_variance(_stack_finger_positions(directory)) >= 4
+
+
+@pytest.mark.parametrize("name", sorted(DEGENERATE_SETS))
+def test_known_degenerate_set_is_still_degenerate(name: str) -> None:
+    """Pins the historical behavior so the deletion cannot be a silent fix.
+
+    If the basis retargeter is ever replaced rather than removed, this fails
+    loudly instead of the published numbers quietly changing meaning.
+    """
+    directory = DEGENERATE_SETS[name]
+    if not Path(directory).is_dir():
+        pytest.skip(f"{name} demos not generated")
+    assert _dims_for_90_percent_variance(_stack_finger_positions(directory)) == 1
+
+
+@pytest.mark.parametrize("name", sorted(DEMO_SETS))
+def test_finger_joints_articulate_independently(name: str) -> None:
+    """Adjacent joints of a finger must move by a meaningful amount.
+
+    The 1-DOF retargeter drove all four joints of a finger with one scalar plus
+    a 0.15 spread, so adjacent joints differed by ~0.05 rad. Real retargeting
+    articulates the chain. Note the Allegro's distal joints move *less* than
+    its proximal ones under normal flexion, so the test is on magnitude, not on
+    the direction of the gradient.
+    """
+    directory = DEMO_SETS[name]
+    if not Path(directory).is_dir():
+        pytest.skip(f"{name} demos not generated")
+    q = _stack_finger_positions(directory)
+    adjacent = np.mean(
+        [
+            np.abs(q[:, f * 4 + 2] - q[:, f * 4 + 1]).mean()
+            + np.abs(q[:, f * 4 + 3] - q[:, f * 4 + 2]).mean()
+            for f in range(4)
+        ]
+    )
+    assert adjacent > 0.2
+
+
+def test_retargeting_script_refuses_to_overwrite_the_default_subject() -> None:
+    from retarget_dexycb_ik import _resolve_output_dir
+
+    args = SimpleNamespace(output_dir=None, subject="20200709-subject-01")
+    assert _resolve_output_dir(args).name == "demonstrations_dexycb_ik"
+    second = SimpleNamespace(output_dir=None, subject="20200813-subject-02")
+    with pytest.raises(SystemExit, match="--output-dir is required"):
+        _resolve_output_dir(second)

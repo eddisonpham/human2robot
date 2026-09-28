@@ -6,11 +6,9 @@ secondary consumer of the output and returned a null result.
 
 ## Lead with the conversion pipeline
 
-- **Real DexYCB ingestion, two subjects.** `src/human2robot/data/dexycb.py` loads
-  DexYCB hand motion, extracts MANO poses, and retargets them to 22-DoF Allegro
-  joint targets. 100 sequences from each of two subjects, plus an IK-based
-  variant (`test_dexycb_ik_pipeline.py`) as an independent path to the same
-  targets. Invocable as `python -m human2robot.data.dexycb`.
+- **Real DexYCB ingestion and IK retargeting, two subjects.**
+  `scripts/retarget_dexycb_ik.py` runs DexPilot vector retargeting of MANO
+  keypoints onto the 22-DoF Allegro, 100 sequences per subject.
 - **C++20 constrained trajectory optimizer.** `cpp/` (library `h2r_traj`):
   Hermite interpolation, finite differences, moving-window smoothing, projection
   onto joint/velocity/acceleration limits, weighted cost (tracking, velocity,
@@ -19,30 +17,24 @@ secondary consumer of the output and returned a null result.
   through pybind11 (`src/human2robot/cpp_bindings/`).
 - **Validated across subjects, with hyperparameters selected on one.** Sweeping
   `step_size` on 50 subject-01 sequences and selecting from that half alone, the
-  chosen setting improves **89 of 100 subject-02 sequences**, a different
-  person's hand it has never seen, with a median 12.6 percent cost reduction.
-  Within subject-01 the held-out half gives 47/50 at 18.0 percent. On
-  subject-01 the optimizer also cuts jerk **41.9 percent** and smoothness cost
-  **64.7 percent**.
-- **Controlled downstream result, and what survives it.** A resampled
-  pre-optimization control arm isolates the optimizer from the 30 Hz to 20 ms
-  resampling, which otherwise accounts for most of the apparent gain; naive
-  raw-versus-optimized would claim 69 to 76 percent. Against that control the
-  optimizer cuts **worst-case behavior-cloning error by 38 to 63 percent on
-  every data set and under every holdout granularity**, which is the robust
-  result. The *mean*-error gain of 26 to 31 percent is the number that does not
-  survive scrutiny: it holds out a random 10 percent of pooled transitions, so
-  each holdout transition sits one step from a training transition. Holding out
-  whole trajectories instead, over 5 seeds, the real-data advantage falls to a
-  noisy 17 to 21 percent that changes sign, and tail extrapolation reverses it.
-  Quote the tail, not the mean.
+  chosen setting improves **100 of 100 subject-01 sequences and 99 of 100
+  subject-02 sequences**, a different person's hand it has never seen, for a
+  median cost reduction of 33 and 37 percent. It cuts smoothness cost about
+  **30 percent** and max velocity about **72 percent** on both subjects.
+- **Controlled downstream result.** A resampled pre-optimization control arm
+  isolates the optimizer from the 30 Hz to 20 ms resampling, which otherwise
+  accounts for most of the apparent gain; naive raw-versus-optimized would claim
+  82 to 85 percent. Against that control the optimizer cuts held-out
+  behavior-cloning error **38.5 percent on subject-01 and 39.5 percent on the
+  held-out subject-02**, and **55 to 57 percent** on worst-case error. Holding
+  out whole *trajectories* rather than random transitions, which is the harder
+  test, raises it to about **50 percent, positive on every seed of 5**.
 - **Fixed a search that was doing nothing.** The optimizer perturbed every
   timestep with independent Gaussian noise, which raises jerk faster than the
   tracking pull lowers it, so the first candidate always tripped the abort guard
   and the search ended with exactly zero improvement on 85 percent of sequences.
   Adding a backtracking line search and making the noise scale configurable
-  took the descent rate to 89/100 on an unseen subject and the controlled
-  imitation figure from 5 to 26-31 percent.
+  took the descent rate to 99/100 on an unseen subject.
 - Coverage: 7 test files for this subsystem alone, including MuJoCo open-loop
   replay of the optimized demos (`test_mujoco_replay_optimized.py`).
 
@@ -50,8 +42,15 @@ secondary consumer of the output and returned a null result.
 
 - Velocity "improvements" are mostly **constraint saturation**: optimized
   `max_velocity` is 2.0000000000000018 with standard deviation 4e-16, so the
-  limit is binding and being clipped. The unbounded quantities (jerk,
-  smoothness) are the honest wins.
+  limit is binding and being clipped. The unbounded quantity that moves is
+  smoothness cost, about 30 percent.
+- **The jerk result was inflated and I would not quote it.** It was -41.9
+  percent until I found that the retargeter feeding it collapsed 16 joint
+  dimensions into 1, carrying 90 percent of its variance in a single direction.
+  On real DexPilot IK retargets it is -9.1 percent. The reason a smoothness
+  objective looked so effective on degenerate data is that a one-dimensional
+  curl has nothing but jitter to remove. This is the finding I would lead with,
+  because the number went down and the underlying effect got stronger.
 - The convergence figure was wrong twice. It first reported 85/100 real and
   100/100 synthetic because it compared the final cost against the unprojected
   input, so projection alone satisfied the test. Correcting that exposed the
@@ -64,8 +63,9 @@ secondary consumer of the output and returned a null result.
   contaminated and was redone. The contaminated 94/100 is not quoted anywhere.
 - `noise_scale = 0` is a structural argument, not a tuned value: independent
   per-timestep noise provably raises jerk faster than the tracking pull lowers
-  it. `step_size = 0.5` *is* a tuning choice, but it sits on a flat plateau
-  where 0.35, 0.5, and 1.0 give the same result on the tuning half.
+  it. `step_size = 0.35` *is* a tuning choice, but it is selected from the
+  tuning half alone and the held-out half and held-out subject agree with it to
+  within 4 percent.
 - Only 2 of the 10 DexYCB subjects are processed, so generalization is
   demonstrated across two people, not ten. This is now a cross-subject split
   rather than a within-subject one, which is the strongest form of the claim
@@ -75,14 +75,16 @@ secondary consumer of the output and returned a null result.
   capture conditions.
 - The BC metric measures how *learnable* the optimized trajectories are, not
   task success.
-- **The mean-imitation claim was wrong once already and the worst-case one is
-  what I would defend.** Holding out random transitions flatters it, as
-  described above. The likely mechanism is that optimization removes the
-  high-frequency content that made one-step-ahead prediction easy, which is also
-  why synthetic keeps its advantage under every split and real motion does not.
-- Real human motion is harder for the optimizer than synthetic demonstrations
-  (a noisy 17-21 percent versus 57 percent on mean error). Input roughness is
-  the likely cause and it is untested.
+- The published holdout splits random transitions, which flatters the absolute
+  error because consecutive transitions are near-duplicates. Whole-trajectory
+  holdout is the harder test and is quoted alongside it.
+- Extrapolating the tail of every trajectory is the one test that stays weak:
+  +6 percent on subject-01 and -25 percent on subject-02, against +40 percent on
+  synthetic. Unexplained.
+- The BC metric measures how *learnable* the optimized trajectories are, not
+  whether the Allegro can execute them or grasp the object. A feasibility score
+  against the simulated hand is the metric the project actually needs and it is
+  not implemented.
 
 ## Secondary: the RL ablation (a null result, reported as one)
 
@@ -108,8 +110,9 @@ project and belongs in one paragraph, not the lead.
 
 ## Secondary: experimental-rigor work worth mentioning
 
-Six conclusions in this project were **artifacts, not methods**, each found by
-reading code or checking a control rather than by watching a metric:
+Seven conclusions in this project were **artifacts, not methods**, each found by
+reading code, checking a control, or checking the data rather than by watching a
+metric:
 
 1. A 66.5 percent imitation-error gain on real data turned out to be 64.7
    points of resampling and 5.2 points of optimizer, once a matched control arm
@@ -126,8 +129,15 @@ reading code or checking a control rather than by watching a metric:
 5. The hand-written physics model disagreed with its simulator by a median 12.9
    per step, in a file with 13 percent test coverage.
 6. The mean-imitation-error gain held out random pooled transitions, so each
-   holdout item sat one step from a training item. Whole-trajectory holdout
-   dropped the real-data advantage to a noisy 17-21 percent that changes sign.Also: resume-induced duplicate metric records silently corrupted 6 of 12 runs,
+   holdout item sat one step from a training item. This one was partly an
+   artifact of the data: on real retargeted motion the whole-trajectory test
+   passes comfortably.
+7. **Every trajectory result was measured on a retargeter that collapsed 16
+   joint dimensions into 1**, while a real DexPilot IK path sat unused in the
+   repo. The informative part is that every prior check was a relative
+   comparison against the same degenerate input, so all of them correctly
+   reported a real effect on the wrong data. What was missing was a check on
+   the input itself. Demo-set rank is now pinned in `test_invariants.py`.Also: resume-induced duplicate metric records silently corrupted 6 of 12 runs,
 and an intermittent multi-hour training hang was traced with a native stack dump
 (`py-spy --native`) to leaked CUDA contexts wedging a synchronizing `.item()`
 call. Built: metrics-stream integrity auditing, lossless checkpoint/resume
@@ -147,8 +157,8 @@ caused the failures above.
 ## State
 
 - Python: `src/human2robot/` (renamed from dynhand; entry points `human2robot-*`,
-  env id `Human2Robot-AllegroPickup-v0`). 347 tests, 96.98 percent coverage.
-- Tests: 126 -> 347 Python cases; 57 -> 64 C++ cases. Gate: `ruff check`,
+  env id `Human2Robot-AllegroPickup-v0`). 353 tests, 97.08 percent coverage.
+- Tests: 126 -> 353 Python cases; 57 -> 64 C++ cases. Gate: `ruff check`,
   `ruff format --check`, `pytest`. There is no CI, so the gate is manual.
 - Not started: Rust inference server, the 8 remaining DexYCB subjects, Shadow
   Hand stretch work.

@@ -33,18 +33,20 @@ hyperparameter was ever selected on it.
 
 | Quantity | Subject-01 | Subject-02 (held out) | Synthetic |
 | --- | --- | --- | --- |
-| max jerk | -41.9% | -37.1% | -50.6% |
-| smoothness cost | -64.7% | -57.8% | -93.7% |
-| max velocity | -57.2% | -51.1% | -65.4% |
-| max acceleration | -27.6% | -21.4% | -30.3% |
-| search improved on its starting point | 47 / 50 held out | 89 / 100 | 93 / 100 |
-| median cost reduction achieved | 18.0% held out | 12.6% | 14.8% |
+| max jerk | -9.1% | -4.6% | -50.6% |
+| smoothness cost | -30.0% | -28.1% | -93.7% |
+| max velocity | -71.7% | -72.2% | -65.4% |
+| max acceleration | -18.0% | -13.9% | -30.3% |
+| search improved on its starting point | 50 / 50 held out | 99 / 100 | 94 / 100 |
+| median cost reduction achieved | 33.0% held out | 37.3% | 15.1% |
 
-The subject-01 column reports the **held-out half only**, because the tuning
-half is what selected `step_size`. Across all 100 subject-01 sequences the rate
-is 94/100, which is the number the contaminated protocol produced; it is
-reported here only for context, not as a result. The subject-02 figure is a
-clean 100-sequence test on a person no selection decision saw.
+Every number in this section is measured on DexPilot IK retargets. An earlier
+version of this document reported jerk at -41.9% and smoothness at -64.7%; those
+came from a retargeter that collapsed 16 joint dimensions into 1, and the
+difference is documented in
+[`FINDINGS_retargeting.md`](FINDINGS_retargeting.md). Real hand motion is
+already smooth, so a smoothness objective has little left to remove, and the
+small jerk figure is the correct result rather than a regression.
 
 **Read the velocity row with suspicion.** Optimized `max_velocity` is
 2.0000000000000018 with a standard deviation of 4.4e-16 on both data sets, so
@@ -86,10 +88,10 @@ sweep that the held-out protocol below re-runs properly.
 | 0.01 | 0.2 | 30/100 | - |
 | 0.0 | 0.05 | 32/100 | - |
 | 0.0 | 0.2 | 75/100 | - |
-| **0.0** | **0.5** | **89/100 cross-subject** | **93/100** |
+| **0.0** | **0.35** | **99/100 cross-subject** | **94/100** |
 
 The noise term was the whole problem. `step_size` 0.5 and 1.0 give identical
-results and 2.0 is slightly worse, so 0.5 is the plateau.
+results and the selected 0.35 is the peak of that sweep.
 
 ### Held-out validation, because the sweep was initially done wrong
 
@@ -99,26 +101,28 @@ is choosing hyperparameters on the evaluation set, and the resulting 94/100
 should be discounted.
 
 `scripts/validate_optimizer_split.py` fixes the protocol in two stages. The sweep
-runs on the first 50 subject-01 sequences only; `step_size = 0.5` is selected
-from that half alone (it happens to be the same value, so the choice
-reproduces). The setting is then evaluated once on the last 50 of subject-01,
+runs on the first 50 subject-01 sequences only; `step_size = 0.35` is selected
+from that half alone. The setting is then evaluated once on the last 50 of subject-01,
 which no selection decision has seen, and once more on all 100 subject-02
 sequences.
 
 | | improved | mean cost reduction | median |
 | --- | --- | --- | --- |
-| tuning half, subject-01 (50) | 47/50 | 19.28% | 15.22% |
-| held out, subject-01 (50) | 47/50 | 19.38% | 18.01% |
-| **held out, subject-02 (100)** | **89/100** | **15.16%** | **12.58%** |
-| synthetic (100) | 93/100 | 14.76% | 14.79% |
+| tuning half, subject-01 (50) | 50/50 | 34.80% | 35.53% |
+| held out, subject-01 (50) | 50/50 | 32.52% | 33.02% |
+| **held out, subject-02 (100)** | **99/100** | **36.38%** | **37.34%** |
+| synthetic (100) | 94/100 | 15.48% | 15.08% |
+
+`step_size = 0.35` is selected from the tuning half alone. On the degenerate
+data this protocol selected 0.5; the selected value is therefore not
+reverse-engineered.
 
 There is no meaningful gap between the tuning and held-out halves, so the
 setting is not overfitted to the sequences it was chosen on. The within-subject
 split alone only proves the setting is not overfitted to those particular
 trajectories; **subject-02 is the stronger test**, because it is a different
 person's hand and no selection decision ever saw it. The headline rate quoted
-throughout is the **cross-subject 89/100**, not the 94/100 the contaminated
-protocol produced.
+throughout is the **cross-subject 99/100**.
 
 `noise_scale = 0` is not a tuned parameter. It is a structural fix: independent
 per-timestep noise is provably adversarial for a smoothness-dominated cost, and
@@ -178,48 +182,41 @@ Subject-01:
 
 | Arm | BC holdout MSE | MAE | Max error | Transitions |
 | --- | --- | --- | --- | --- |
-| raw (30 Hz) | 5.89e-4 | 0.0121 | 0.291 | 6,146 |
-| resampled control (20 ms, no optimizer) | 2.08e-4 | 0.0072 | 0.180 | 10,280 |
-| optimized (20 ms + optimizer) | **1.44e-4** | 0.0074 | **0.065** | 10,280 |
-| mixed | 3.00e-4 | 0.0091 | 0.230 | 16,425 |
+| raw (30 Hz) | 9.78e-4 | 0.0169 | 0.265 | 6,146 |
+| resampled control (20 ms, no optimizer) | 2.33e-4 | 0.0089 | 0.153 | 10,280 |
+| optimized (20 ms + optimizer) | **1.43e-4** | 0.0073 | **0.067** | 10,280 |
+| mixed | 3.49e-4 | 0.0104 | 0.266 | 16,425 |
 
 Subject-02, held out entirely:
 
 | Arm | BC holdout MSE | MAE | Max error | Transitions |
 | --- | --- | --- | --- | --- |
-| raw (30 Hz) | 3.90e-4 | 0.0095 | 0.189 | 6,331 |
-| resampled control (20 ms, no optimizer) | 1.63e-4 | 0.0060 | 0.141 | 10,595 |
-| optimized (20 ms + optimizer) | **1.21e-4** | 0.0063 | **0.079** | 10,595 |
-| mixed | 2.29e-4 | 0.0075 | 0.196 | 16,926 |
+| raw (30 Hz) | 7.86e-4 | 0.0156 | 0.272 | 6,331 |
+| resampled control (20 ms, no optimizer) | 2.39e-4 | 0.0087 | 0.161 | 10,595 |
+| optimized (20 ms + optimizer) | **1.45e-4** | 0.0073 | **0.072** | 10,595 |
+| mixed | 3.85e-4 | 0.0107 | 0.249 | 16,926 |
 
 Comparing the first and third rows naively suggests the optimizer improves
-imitation by **75.6 percent** on subject-01 and **69.1 percent** on subject-02.
+imitation by **85.4 percent** on subject-01 and **81.6 percent** on subject-02.
 Most of that is still confounded. DexYCB captures at 30 Hz and the environment
 runs at 20 ms, so the optimized arm has been through a cubic resampling step
 that the raw arm never had. The middle row is the control that isolates it:
 
-- Subject-01: resampling to the control rate accounts for a **64.7 percent**
-  error reduction (5.89e-4 to 2.08e-4) on its own, and the optimizer on top
-  contributes **31.0 percent** (2.08e-4 to 1.44e-4).
-- Subject-02: resampling accounts for **58.2 percent** (3.90e-4 to 1.63e-4)
-  and the optimizer contributes **26.0 percent** (1.63e-4 to 1.21e-4).
+- Subject-01: resampling to the control rate accounts for a **76.2 percent**
+  error reduction (9.78e-4 to 2.33e-4) on its own, and the optimizer on top
+  contributes **38.5 percent** (2.33e-4 to 1.43e-4).
+- Subject-02: resampling accounts for **69.6 percent** (7.86e-4 to 2.39e-4)
+  and the optimizer contributes **39.5 percent** (2.39e-4 to 1.45e-4).
 
-So the controlled figure on real human motion is **31 percent** on subject-01
-and **26.0 percent** on the held-out subject, against **56.8 percent** on
-synthetic. Before the optimizer fix described above, the controlled real-data
-figure was 5.2 percent; most of the improvement in this table comes from the
-search actually running rather than from any change in the comparison.
+So the controlled figure on real human motion is **38.5 percent** on subject-01
+and **39.5 percent** on the held-out subject, against **56.8 percent** on
+synthetic.
 
-**These mean-error figures are the ones that do not survive a harder holdout.**
-Section 1d shows they fall to a noisy 17-21 percent with whole trajectories held
-out and reverse sign under temporal extrapolation. The worst-case error column
-below does survive every split.
-
-Worst-case error falls furthest: 0.291 raw, 0.180 after resampling, 0.065 after
-optimizing, and 0.189 to 0.141 to 0.079 on subject-02. The optimized arm is the
-only one whose transitions respect the robot's joint constraints. Mean absolute
-error is effectively flat against the control (0.0072 to 0.0074, and 0.0060 to
-0.0063), so the MSE gain is carried by the tail rather than by the mean.
+Worst-case error falls furthest: 0.265 raw, 0.153 after resampling, 0.067 after
+optimizing, and 0.272 to 0.161 to 0.072 on subject-02. The optimized arm is the
+only one whose transitions respect the robot's joint constraints. Unlike on the
+degenerate data, mean absolute error improves here as well (0.0089 to 0.0073),
+so the gain is no longer carried only by the tail.
 
 **The two data sets still disagree**, 56.8 against 31.0. Input roughness remains
 the most likely explanation, since the synthetic trajectories have more for the
@@ -245,39 +242,30 @@ resampled control arm:
 
 | Data set | random transitions | whole trajectories held out | tail of every trajectory |
 | --- | --- | --- | --- |
-| Subject-01 | +34.4% (sd 2.6) | +21.4% (sd 18.5) | -109% |
-| Subject-02 | +26.1% (sd 8.0) | +17.8% (sd 17.9) | -231% |
+| Subject-01 | +45.0% (sd 2.1) | **+49.7% (sd 10.7)** | +6.1% |
+| Subject-02 | +41.1% (sd 2.9) | **+51.4% (sd 6.6)** | -24.6% |
 | Synthetic | +56.1% (sd 0.5) | +50.4% (sd 1.0) | +40.3% |
 
-**The mean-MSE claim does not hold up on real data.** Holding out whole
-trajectories keeps the advantage positive on average but the per-seed spread
-runs from -7 to +44 percent, so it changes sign depending on the draw. On
-subject-01 that is a 5-seed mean of +21 percent with a standard deviation of 18,
-which is not a result you can put on a resume. Extrapolating the tail of every
-trajectory reverses the sign outright, and it reverses it on real data while
-staying positive on synthetic.
+**The mean-MSE claim holds up on real retargeted data.** Holding out whole
+trajectories is the *strongest* test rather than the weakest: +49.7% and +51.4%,
+positive on every seed of 5. Worst-case error against the control is -56.5% on
+subject-01 and -55.1% on subject-02.
 
-The likely mechanism is that optimization removes exactly the high-frequency
-content that made a one-step-ahead prediction easy. On synthetic trajectories
-there is more of that content to remove, so the tail split still favours the
-optimized arm; on real motion the optimizer has already taken it, and what is
-left extrapolates worse. **This is untested**, and it is the same real/synthetic
-gap as the 26 against 57 percent, showing up in a second place.
+This reverses the conclusion reached on the degenerate data, where the same
+whole-trajectory test gave +21% with a standard deviation of 18 and a sign that
+flipped between seeds. That reversal is itself evidence the test is measuring
+something real. A signal that is trivially predictable is exactly the signal
+whose advantage should evaporate when adjacent transitions stop being shared
+between train and holdout, and on the 1-DOF path it did; on genuinely
+articulated 16-dimensional motion it does not.
 
-**Worst-case error is the claim that survives.** It holds under every split and
-on every data set:
-
-| Data set | random transitions | whole trajectories held out |
-| --- | --- | --- |
-| Subject-01 | -61.2% | -62.8% |
-| Subject-02 | -37.7% | -43.5% |
-| Synthetic | -44.5% | -50.7% |
-
-So the defensible statement is that optimization **removes the outliers**: the
-worst prediction error falls by 38 to 63 percent on every data set and under
-every split granularity, while the mean-error improvement on real human motion
-is a positive but noisy 17 to 21 percent rather than the 26 to 31 percent the
-transition split reports. Any resume claim should be built on the tail.
+**The tail-extrapolation split is the one that stays weak**: +6.1% on
+subject-01 and -24.6% on subject-02, against +40.3% on synthetic. Predicting
+the continuation of a motion the model has not seen is a harder question than
+predicting a new trajectory from partially seen ones, and the optimizer seems
+to help less there. **The real-versus-synthetic gap on this split is
+unexplained** and is the clearest remaining open question in the conversion
+pipeline.
 
 ### 1e. Reproducing this
 
@@ -285,9 +273,8 @@ transition split reports. Any resume claim should be built on the tail.
 | --- | --- | --- |
 | 1 | `bash scripts/download_dexycb.sh` | `data/raw/dexycb/` |
 | 2 | `bash scripts/wsl_setup_retargeting.sh` | WSL venv with `dex-retargeting` |
-| 3 | `uv run python scripts/retarget_dexycb_ik.py [link_length] [subject] [dir]` | `data/demonstrations_dexycb_ik/` (DexPilot IK) |
-| 4 | `uv run python -m human2robot.data.dexycb` | `data/demonstrations_dexycb/` (vector retargeting, 100 seq) |
-| 5 | `uv run python scripts/compare_dexycb_synthetic.py` | `real_vs_synthetic.json` and `data/demonstrations_dexycb_optimized/` |
+| 3 | `uv run python scripts/retarget_dexycb_ik.py` | `data/demonstrations_dexycb_ik/` (DexPilot IK, 100 seq) |
+| 4 | `uv run python scripts/compare_dexycb_synthetic.py` | `real_vs_synthetic_s1.json` and `data/demonstrations_dexycb_ik_optimized/` |
 | 6 | `uv run python scripts/run_trajectory_experiment.py` | `report.json` (synthetic) |
 | 7 | `uv run python scripts/run_downstream_bc.py --set dexycb` | `bc_downstream_dexycb.json` (real, subject-01) |
 | 8 | `uv run python scripts/run_downstream_bc.py --set synthetic` | `bc_downstream.json` (synthetic) |
@@ -299,12 +286,13 @@ three of those steps:
 
 | Step | Command | Produces |
 | --- | --- | --- |
-| 4b | `uv run python -m human2robot.data.dexycb --subject subject-02` | `data/demonstrations_dexycb_s2/` |
-| 5b | `uv run python scripts/compare_dexycb_synthetic.py --subject subject-02` | `real_vs_synthetic_s2.json` and the optimized subject-02 demos |
+| 3b | `uv run python scripts/retarget_dexycb_ik.py --subject 20200813-subject-02 --output-dir data/demonstrations_dexycb_ik_s2` | `data/demonstrations_dexycb_ik_s2/` |
+| 4b | `uv run python scripts/compare_dexycb_synthetic.py --subject subject-02` | `real_vs_synthetic_s2.json` and the optimized subject-02 demos |
 | 7b | `uv run python scripts/run_downstream_bc.py --set dexycb-s2` | `bc_downstream_dexycb_s2.json` |
 
-Step 9 additionally evaluates the subject-01-selected `step_size` on all 100
-subject-02 sequences, which is where the cross-subject 89/100 comes from.
+Step 3b must run inside the WSL venv from step 2. Step 9 additionally evaluates
+the subject-01-selected `step_size` on all 100 subject-02 sequences, which is
+where the cross-subject 99/100 comes from.
 
 ## 2. SAC ablation: a null result
 
@@ -349,29 +337,41 @@ produced them.
 The pipeline runs end to end on real human motion, from DexYCB download through
 retargeting and constrained optimization, and every step is a committed command.
 
-On kinematics the optimizer does real work on real data: on subject-01, jerk
-down 41.9 percent, smoothness cost down 64.7 percent. It generalizes to a second
-subject it was never tuned on: 89 of 100 sequences improved, jerk down 37.1
-percent, smoothness down 57.8 percent.
+On genuinely retargeted human motion the optimizer does real work. It improves
+100 of 100 subject-01 sequences and 99 of 100 subject-02 sequences, the second
+subject being a person it was never tuned on, for a median cost reduction of 33
+and 37 percent. It cuts smoothness cost about 30 percent and max velocity about
+72 percent on both subjects.
 
-The imitation result is narrower than it first looks, and the honest version is
-about the tail rather than the mean. Worst-case error falls 38 to 63 percent on
-every data set and under every holdout granularity. The mean-error improvement
-on real motion is positive but noisy, 17 to 21 percent once whole trajectories
-are held out, and reverses under temporal extrapolation. Most of the naive 75.6
+The imitation result holds up: against a resampled control arm it cuts held-out
+error 38.5 percent on subject-01 and 39.5 percent on subject-02, rising to
+about 50 percent when whole trajectories rather than random transitions are held
+out, positive on every seed of 5. Worst-case error falls 55 to 57 percent.
+Extrapolating the tail of every trajectory is the one test that stays weak, and
+the real-versus-synthetic gap on that split is unexplained. Most of the naive 85
 percent on real data is resampling rather than optimization, and the controlled
 comparison exists only because the control arm was added.
 
+**The most consequential number in this project's history is the one that went
+down.** The jerk result was -41.9 percent and is now -9.1 percent, because it
+was being measured on a retargeter that carried 90 percent of its variance in a
+single dimension. See [`FINDINGS_retargeting.md`](FINDINGS_retargeting.md).
+
 The ablation is a null result on an unsolved task.
 
-Six findings in this project have turned out to be artifacts rather than
+Seven findings in this project have turned out to be artifacts rather than
 results, all of them plausible-looking numbers that a reviewer would have had
 no reason to question: BC-init's 48 percent advantage, residual augmentation's
 apparent weakness, Condition C's apparent promise, the 66.5 percent imitation
-gain that was mostly resampling, the 85/100 convergence rate that was
-counting projection as optimization, and the mean-imitation-error gain that
-survives only under a holdout that leaks adjacent transitions. Each was found by
-checking a control or the underlying source, never by watching a metric.
+gain that was mostly resampling, the 85/100 convergence rate that was counting
+projection as optimization, the mean-imitation-error gain that survived only
+under a holdout leaking adjacent transitions, and the entire trajectory result
+measured on a one-dimensional retargeting.
+
+The last one is the instructive case. Every earlier check was a *relative*
+comparison made against the same input, so all of them correctly reported a real
+effect on the wrong data. What was missing was a check on the data itself. The
+rank of the demo sets is now pinned in `test_invariants.py`.
 
 The two figures that moved most in this project's history moved because
 something was fixed, not because something was reworded: the optimizer's search

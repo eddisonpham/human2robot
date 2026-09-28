@@ -12,7 +12,9 @@ from human2robot.cpp_bindings import (
     optimize_trajectory,
 )
 from human2robot.data.allegro_demos import load_demo_npz
-from human2robot.data.dexycb import build_subject_demos, discover_sequences
+from human2robot.data.dexycb import discover_sequences
+
+IK_DEMO_DIR = Path("data/demonstrations_dexycb_ik")
 
 pytestmark = pytest.mark.skipif(
     not Path("data/raw/dexycb/20200709-subject-01").exists(),
@@ -21,9 +23,16 @@ pytestmark = pytest.mark.skipif(
 
 
 @pytest.fixture(scope="module", name="demo_paths")
-def demo_paths_fixture(tmp_path_factory):
-    out = tmp_path_factory.mktemp("dexycb_demos")
-    return build_subject_demos("data/raw/dexycb/20200709-subject-01", out, seed=0)
+def demo_paths_fixture():
+    """The DexPilot IK retargets, which are what every result is measured on.
+
+    The basis retargeter in ``data/dexycb.py`` is disabled because it collapses
+    16 joint dimensions into 1; see ``docs/FINDINGS_retargeting.md``.
+    """
+    paths = sorted(IK_DEMO_DIR.glob("*.npz"))
+    if not paths:
+        pytest.skip("run scripts/retarget_dexycb_ik.py first")
+    return paths
 
 
 def test_discovery_finds_all_sequences():
@@ -35,10 +44,9 @@ def test_meets_phase4_acceptance_count(demo_paths):
     assert len(demo_paths) >= 100
 
 
-def test_manifest_records_rejections(demo_paths, tmp_path):
+def test_manifest_records_rejections(demo_paths):
     manifest = json.loads((demo_paths[0].parent / "manifest.json").read_text())
     assert manifest["count"] == len(demo_paths)
-    assert manifest["generator"] == "dexycb"
 
 
 def test_all_demos_valid_and_bounded(demo_paths):
@@ -47,7 +55,20 @@ def test_all_demos_valid_and_bounded(demo_paths):
         assert demo.q.shape[1] == 22
         assert np.isfinite(demo.q).all()
         assert demo.q.min() >= -0.5
-        assert demo.q.max() <= 1.62
+        assert demo.q.max() <= 1.75
+
+
+def test_the_basis_retargeter_is_disabled():
+    """It is not a retargeting, so it must not silently produce demos again.
+
+    This function drove all four joints of a finger from one curl scalar, which
+    put 90 percent of the demo variance in a single dimension. Every published
+    trajectory number came from it before that was found.
+    """
+    from human2robot.data.dexycb import _mano_to_joint_targets
+
+    with pytest.raises(NotImplementedError, match="not a retargeting"):
+        _mano_to_joint_targets(np.zeros((4, 51)))
 
 
 def test_demos_show_motion_not_static(demo_paths):

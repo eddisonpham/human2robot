@@ -8,11 +8,13 @@ used as demonstrations for a SAC trainer, which is a secondary consumer rather
 than the point of the project.
 
 **The deliverable is the conversion pipeline, and it is validated across
-subjects.** On 100 sequences from each of two DexYCB subjects, with every
-hyperparameter selected on subject-01 only, the optimizer improves **89 of 100
-sequences on subject-02**, which it has never seen, cuts jerk 37 percent and
-smoothness cost 58 percent there, and cuts worst-case imitation error by
-**38 to 44 percent** on every data set and under every holdout granularity.
+subjects.** Human hand motion is retargeted onto the 22-DoF Allegro through
+DexPilot IK against MANO keypoints, then projected onto joint, velocity, and
+acceleration limits by a C++20 constrained optimizer. On 100 sequences from each
+of two DexYCB subjects, with every hyperparameter selected on subject-01 alone,
+the optimizer improves **99 of 100 sequences on subject-02**, a person it has
+never seen, and cuts held-out imitation error **~50 percent** there when whole
+trajectories are held out.
 
 This is primarily an **engineering** project. The ML is the application; the
 substance is the pipeline, the correctness tooling, and the discipline that keeps
@@ -36,20 +38,21 @@ metric:
    from-scratch SAC by 48 percent" headline.
 5. The hand-written physics model disagreed with its simulator by a median 12.9
    per step, in a file with 13 percent test coverage.
-6. The headline mean-imitation-error gain holds out a random 10 percent of pooled
-   transitions, so each holdout transition sits one step from a training
-   transition. Holding out whole trajectories instead reduces the real-data
-   advantage to a noisy 17 to 21 percent that changes sign, and tail
-   extrapolation reverses it. The worst-case error reduction survives every
-   split.
+6. **Every published trajectory result was measured on data that was not a
+   retargeting.** The retargeter collapsed 16 joint dimensions into 1, carrying
+   90 percent of its variance in a single direction, while a real DexPilot IK
+   path sat unused. Fixing it dropped the headline jerk result from -41.9% to
+   -9.1% while raising the descent rate to 100/100. The inflation was an
+   artifact of the artifact. See
+   [`docs/FINDINGS_retargeting.md`](docs/FINDINGS_retargeting.md).
 
 Each is written up in [`docs/`](docs/), and each has a regression test.
 
 **What the pipeline does, on real data.** DexYCB hand motion sequences are
-ingested, MANO poses retargeted to Allegro joints, and the result projected onto
-joint, velocity, and acceleration limits. On subject-01 the optimizer cuts jerk
-42 percent and smoothness cost 65 percent, and cuts worst-case imitation error
-from 0.291 to 0.065. The same pipeline runs on a second subject it was never
+ingested, MANO poses retargeted to Allegro joints through DexPilot IK, and the
+result projected onto joint, velocity, and acceleration limits. On subject-01
+the optimizer cuts smoothness cost 30 percent and worst-case imitation error
+from 0.153 to 0.067. The same pipeline runs on a second subject it was never
 tuned on.
 
 **The reinforcement learning side is a null result and is reported as one.** The
@@ -171,48 +174,46 @@ two watchdogs from fighting and from resurrecting a deliberately cancelled run.
 
 #### Human-to-robot trajectory conversion
 
-Kinematic quality, measured on **100 real DexYCB sequences per subject**:
+Kinematic quality, measured on **100 real DexYCB sequences per subject**,
+retargeted through DexPilot IK:
 
 | Quantity | Subject-01 | Subject-02 (held out) | Synthetic |
 | --- | --- | --- | --- |
-| max jerk | -41.9% | -37.1% | -50.6% |
-| smoothness cost | -64.7% | -57.8% | -93.7% |
-| max velocity | -57.2% | -51.1% | -65.4% |
-| search improved on its starting point | 47/50 held out | **89/100** | 93/100 |
-| median cost reduction achieved | 18.0% | 12.6% | 14.8% |
+| max jerk | -9.1% | -4.6% | -50.6% |
+| smoothness cost | -30.0% | -28.1% | -93.7% |
+| max velocity | -71.7% | -72.2% | -65.4% |
+| max acceleration | -18.0% | -13.9% | -30.3% |
+| search improved on its starting point | 50/50 held out | **99/100** | 94/100 |
+| median cost reduction achieved | 33.0% | 37.3% | 15.1% |
 
-Imitation quality on subject-01, measured on **100 real DexYCB sequences**. The
-middle row is a control that isolates the optimizer, because DexYCB captures at
-30 Hz and the environment runs at 20 ms:
+Jerk moves very little on real retargeted motion, and that is the correct
+result rather than a disappointing one: real hand motion is already smooth, so a
+smoothness objective has little left to take. The earlier -41.9% came from a
+degenerate input with no structure to preserve, and is discussed in
+[`docs/FINDINGS_retargeting.md`](docs/FINDINGS_retargeting.md).
+
+Imitation quality, subject-01, 100 real sequences. The middle row is a control
+that isolates the optimizer, because DexYCB captures at 30 Hz and the
+environment runs at 20 ms:
 
 | Arm | BC holdout MSE | Max error | Transitions |
 | --- | --- | --- | --- |
-| raw (30 Hz) | 5.89e-4 | 0.291 | 6,146 |
-| resampled control (no optimizer) | 2.08e-4 | 0.180 | 10,280 |
-| optimized | **1.44e-4** | **0.065** | 10,280 |
+| raw (30 Hz) | 9.78e-4 | 0.265 | 6,146 |
+| resampled control (no optimizer) | 2.33e-4 | 0.153 | 10,280 |
+| optimized | **1.43e-4** | **0.067** | 10,280 |
 
-Comparing the first and last rows suggests a 75.6 percent gain. Most of that is
-resampling: 64.7 percent comes from resampling alone, and the optimizer adds
-**31 percent** on top. Worst-case error falls furthest, 0.291 to 0.065.
+Naive raw-versus-optimized suggests 85.4 percent. Resampling accounts for 76.2
+points of that, and the optimizer adds **38.5 percent** on top. Subject-02 gives
+81.6 percent naive and **39.5 percent** controlled, with worst-case error
+0.161 to 0.072.
 
-**Subject-02, held out entirely** (`bc_downstream_dexycb_s2.json`): raw 3.90e-4,
-resampled control 1.63e-4, optimized 1.21e-4, max error 0.189 to 0.141 to 0.079.
-The same comparison gives 69.1 percent naive and **26.0 percent** controlled.
-Resampling accounts for 58.2 points of the naive figure on this subject.
-
-**The mean-error row is the part that does not survive scrutiny.** That split
-holds out a random 10 percent of pooled transitions, so a holdout transition
-sits one step from a training transition. Holding out whole *trajectories*
-instead, over 5 seeds, the controlled advantage on real data is +21 percent with
-a standard deviation of 18, which changes sign depending on the draw, and
-extrapolating the tail of every trajectory reverses it outright. On synthetic the
-advantage survives every split (56, 50, 40 percent), which points at input
-roughness as the cause. The optimization is removing the high-frequency content
-that made one-step-ahead prediction easy.
-
-**Worst-case error is the claim that holds everywhere**, at -38 to -63 percent
-across all three data sets and both the transition and trajectory splits. The
-published claim should be built on that, not on the mean.
+**The holdout granularity matters, and here it helps.** Holding out whole
+*trajectories* rather than random transitions gives +49.7% on subject-01
+(sd 10.7) and +51.4% on subject-02 (sd 6.6), positive on every seed of 5. On
+the degenerate data the same test was the weakest at +21% with a sign that
+flipped, which is what one should expect from a signal that is trivially
+predictable. Extrapolating the tail of every trajectory is still weak, +6.1% and
+-24.6%, and remains unexplained.
 
 On the **synthetic** set, where both arms are already at 20 ms so the comparison
 is clean, the optimizer cuts held-out error **56.8 percent** (MSE 7.08e-4 to
@@ -230,11 +231,11 @@ test this data allows.
 subject-01 sequences, selects from that half alone, then evaluates once on the
 last 50 and again on subject-02 in full. Subject-02 is a different person's hand
 and no hyperparameter was ever selected on it, so it is a genuine cross-subject
-test rather than a within-subject split: **89/100 improved, median 12.6
-percent**, against 47/50 and 18.0 percent within subject-01. An earlier version
+test rather than a within-subject split: **99/100 improved, median 37.3
+percent**, against 50/50 and 33.0 percent within subject-01. An earlier version
 of this table was swept and reported on the same 100 sequences it was tuned on,
-which is choosing hyperparameters on the evaluation set; the 94/100 it produced
-is not the number quoted above. See [`docs/RESULTS.md`](docs/RESULTS.md),
+which is choosing hyperparameters on the evaluation set; that contaminated
+protocol is documented rather than quoted. See [`docs/RESULTS.md`](docs/RESULTS.md),
 `scripts/diagnose_convergence.py`, and `results/trajectory_optimization/`.
 
 #### The SAC ablation (null result)
@@ -361,7 +362,7 @@ version control.
 ## Engineering practices
 
 **Correctness is defended by tests, not by review.** 97 percent line coverage
-across 347 Python tests, enforced at a 90 percent floor in `pyproject.toml`, plus
+across 353 Python tests, enforced at a 90 percent floor in `pyproject.toml`, plus
 64 GoogleTest cases on the C++ side.
 
 **Invariants are pinned explicitly.** `tests/python/test_invariants.py` pins the
@@ -405,13 +406,15 @@ cmake --build cpp/build && ctest --test-dir cpp/build --output-on-failure
 
 ## Scope status
 
-**Implemented.** The full conversion pipeline, end to end and scripted:
-DexYCB download, real MANO ingestion and retargeting onto the Allegro hand
-(`data/dexycb.py`, `python -m human2robot.data.dexycb`), a C++20 constrained
-trajectory optimizer with 64 GoogleTest cases (`cpp/`) and its pybind11 bridge,
-and downstream imitation evaluation with a matched control arm. Validated on two
-DexYCB subjects, with every hyperparameter selected on subject-01 and the
-headline numbers reported on subject-02.
+**Implemented.** The full conversion pipeline, end to end and scripted: DexYCB
+download, real MANO ingestion and DexPilot IK retargeting onto the Allegro hand
+(`scripts/retarget_dexycb_ik.py`, which needs the WSL venv from
+`scripts/wsl_setup_retargeting.sh`), a C++20 constrained trajectory optimizer
+with 64 GoogleTest cases (`cpp/`) and its pybind11 bridge, and downstream
+imitation evaluation with a matched control arm. Validated on two DexYCB
+subjects, with every hyperparameter selected on subject-01 and the headline
+numbers reported on subject-02. The earlier basis retargeter in
+`data/dexycb.py` is disabled and raises; it is not a retargeting.
 
 Also Tier A SAC with BC initialization and Minari demonstration replay; the
 floating Allegro Tier B environment; blackbox and residual dynamics augmentation
@@ -428,17 +431,17 @@ residual model non-trivial and which is not yet implemented. See
 **Not started.** The Rust inference server, the Shadow Hand stretch work, and
 the 8 remaining DexYCB subjects.
 
-**Known weaknesses.** The optimizer's effect on *mean* imitation error on real
-human motion is a positive but noisy 17 to 21 percent once whole trajectories
-are held out, and reverses sign under temporal extrapolation; the
-*worst-case* error reduction of 38 to 63 percent is the robust result. The
-synthetic advantage of 57 percent survives every holdout granularity while the
-real-data mean does not, so the real/synthetic gap is unexplained. Two DexYCB
-subjects are validated, out of ten in the dataset, and both come from the same
-capture rig, so robustness to capture conditions is untested. The ONNX exporter
-still uses the legacy TorchScript path, which PyTorch 2.9 will retire in favour
-of `torch.export`. The RL half is a null result on an unsolved task. There is no
-CI, so the gate and the C++ suite are run by hand.
+**Known weaknesses.** The imitation metric measures how learnable the optimized
+trajectories are, not whether the Allegro can execute them or grasp the object;
+a feasibility score against the simulated hand is the right metric and is not
+implemented. Extrapolating the tail of every trajectory shows almost no
+advantage on subject-01 and a reversal on subject-02, against a large one on
+synthetic, and that gap is unexplained. Two DexYCB subjects are validated, out
+of ten in the dataset, and both come from the same capture rig, so robustness to
+capture conditions is untested. The ONNX exporter still uses the legacy
+TorchScript path, which PyTorch 2.9 will retire in favour of `torch.export`. The
+RL half is a null result on an unsolved task. There is no CI, so the gate and the
+C++ suite are run by hand.
 
 ## Licenses
 
