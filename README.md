@@ -73,6 +73,7 @@ rather than dropped, in [`REVIEW_STATUS.md`](REVIEW_STATUS.md) and
 | [`docs/FINDINGS_training_hang.md`](docs/FINDINGS_training_hang.md) | The CUDA driver hang, diagnosed from a native stack dump |
 | [`docs/FINDINGS_metrics_integrity.md`](docs/FINDINGS_metrics_integrity.md) | Resume corrupting the metrics stream, and the recovery |
 | [`agents/`](agents/) | Read-only build specification, start at [`00_INDEX.md`](agents/00_INDEX.md) |
+| [`ROADMAP.md`](ROADMAP.md) | Remaining work, ordered by what protects the project's claims |
 
 ## Requirements
 
