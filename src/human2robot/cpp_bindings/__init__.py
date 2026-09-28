@@ -24,7 +24,14 @@ def _load_module():
                 import importlib.util
 
                 spec = importlib.util.spec_from_file_location("h2r_cpp", pyd)
-                if spec is None or spec.loader is None:
+                # Not practically reachable. The glob only yields paths that
+                # exist, and `spec_from_file_location` still returns a spec for
+                # a `.pyd` that has since been deleted, where the failure then
+                # surfaces from `exec_module` as a DLL load error instead. Kept
+                # as a guard against a future loader change, but reaching it
+                # from a test would mean patching the filesystem call under
+                # test, which tests the patch rather than the loader.
+                if spec is None or spec.loader is None:  # pragma: no cover
                     continue
                 module = importlib.util.module_from_spec(spec)
                 sys.modules["h2r_cpp"] = module

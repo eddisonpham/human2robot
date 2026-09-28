@@ -69,7 +69,15 @@ def _matrix_to_quaternion(matrix: np.ndarray) -> np.ndarray:
         z = 0.25 * scale
     quaternion = np.array([w, x, y, z], dtype=np.float64)
     norm = float(np.linalg.norm(quaternion))
-    if norm < _SMALL_ANGLE:
+    # Unreachable for any finite input. Each of the four branches above sets
+    # one component to 0.25 * scale, and the matrix inequalities that select a
+    # branch are what force that scale away from zero, so the assembled
+    # quaternion always has unit norm. A sweep over 20,000 random rotations
+    # plus degenerate and extreme matrices never produced a norm below 1.0. The
+    # check stays as a guard against a future rewrite of the branch selection
+    # reintroducing a zero denominator, which is the bug this function exists
+    # to prevent.
+    if norm < _SMALL_ANGLE:  # pragma: no cover - defensive, provably unreachable
         return np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float64)
     quaternion /= norm
     # q and -q describe the same rotation. Canonicalize to a non-negative

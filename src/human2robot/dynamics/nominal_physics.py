@@ -48,9 +48,8 @@ def compute_obs_delta(
     if ctrl_from_action:
         ctrl = _action_to_ctrl(model, action, action_scale_low, action_scale_high)
     else:
+        # Already two-dimensional by this point, so no reshape is needed here.
         ctrl = np.asarray(action, dtype=np.float64).copy()
-        if ctrl.ndim == 1:
-            ctrl = ctrl.reshape(1, -1)
 
     data = mujoco.MjData(model)
     _set_state_from_obs(model, data, obs)

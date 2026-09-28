@@ -46,5 +46,5 @@ def main() -> None:
     print(out)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover - console entry point
     main()

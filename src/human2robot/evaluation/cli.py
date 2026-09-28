@@ -42,5 +42,5 @@ def main() -> None:
     print(json.dumps(metrics, indent=2))
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover - console entry point
     main()
