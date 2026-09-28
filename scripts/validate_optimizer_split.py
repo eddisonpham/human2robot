@@ -1,9 +1,14 @@
-"""Tune the optimizer on one half of the data and report on the other half.
+"""Tune the optimizer on one subject and report on another.
 
 The descent rate is easy to inflate by choosing `step_size` while looking at
-the same sequences the rate is then reported on. This script fixes the protocol:
-the sweep runs on the first half only, and the chosen setting is evaluated once
-on the second half, which no selection decision has seen.
+the same sequences the rate is then reported on. This script fixes the protocol
+in two stages:
+
+1. The sweep runs on the first half of subject-01 only, and the chosen setting
+   is evaluated on the second half, which no selection decision has seen.
+2. The same setting is then evaluated on subject-02 in full. Subject-02 is a
+   different person's hand and no hyperparameter was ever selected on it, so it
+   is a genuine cross-subject test rather than a within-subject split.
 
 Usage:
 
@@ -24,6 +29,7 @@ from human2robot.cpp_bindings import (
 from human2robot.data.allegro_demos import load_demo_npz
 
 DEXYCB_DIR = Path("data/demonstrations_dexycb")
+DEXYCB_S2_DIR = Path("data/demonstrations_dexycb_s2")
 SYNTH_DIR = Path("data/demonstrations")
 DEFAULT_OUT = Path("results/trajectory_optimization/optimizer_split.json")
 
@@ -37,10 +43,10 @@ STEP_GRID = (0.05, 0.1, 0.2, 0.35, 0.5, 0.75, 1.0, 1.5, 2.0)
 NOISE_SCALE = 0.0
 
 
-def load_dexycb() -> list[np.ndarray]:
+def load_dexycb(directory: Path = DEXYCB_DIR) -> list[np.ndarray]:
     """Load real trajectories, resampled to the 20 ms control period."""
     out = []
-    for path in sorted(DEXYCB_DIR.glob("dexycb_*.npz")):
+    for path in sorted(directory.glob("dexycb_*.npz")):
         demo = load_demo_npz(path)
         q16 = cubic_resample(demo.q[:, 6:], CAPTURE_DT, CONTROL_DT)
         out.append(np.concatenate([np.zeros((len(q16), 6)), q16], axis=1))
@@ -128,15 +134,26 @@ def main(argv: list[str] | None = None) -> int:
     heldout = score(holdout, best_step)
     synth = score(load_synthetic(), best_step)
     print(
-        f"  HELD-OUT DexYCB  improved={heldout['improved']}/{heldout['n']} "
+        f"  HELD-OUT DexYCB   improved={heldout['improved']}/{heldout['n']} "
         f"mean={heldout['mean_improvement_pct']:.2f}% "
         f"median={heldout['median_improvement_pct']:.2f}%"
     )
     print(
-        f"  synthetic        improved={synth['improved']}/{synth['n']} "
+        f"  synthetic         improved={synth['improved']}/{synth['n']} "
         f"mean={synth['mean_improvement_pct']:.2f}% "
         f"median={synth['median_improvement_pct']:.2f}%"
     )
+
+    subject2 = None
+    if DEXYCB_S2_DIR.is_dir() and list(DEXYCB_S2_DIR.glob("dexycb_*.npz")):
+        subject2 = score(load_dexycb(DEXYCB_S2_DIR), best_step)
+        print(
+            f"  CROSS-SUBJECT s-2 improved={subject2['improved']}/{subject2['n']} "
+            f"mean={subject2['mean_improvement_pct']:.2f}% "
+            f"median={subject2['median_improvement_pct']:.2f}%"
+        )
+    else:
+        print(f"  CROSS-SUBJECT s-2 skipped, no demos in {DEXYCB_S2_DIR}")
 
     payload = {
         "noise_scale": NOISE_SCALE,
@@ -145,6 +162,7 @@ def main(argv: list[str] | None = None) -> int:
         "tune": sweep,
         "holdout_dexycb": heldout,
         "synthetic_all": synth,
+        "cross_subject_dexycb_s2": subject2,
     }
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)

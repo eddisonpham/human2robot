@@ -39,6 +39,12 @@ DEMO_SETS = {
         Path("data/demonstrations_dexycb_optimized"),
         Path("results/trajectory_optimization/bc_downstream_dexycb.json"),
     ),
+    # Held out entirely: no hyperparameter was selected on this subject.
+    "dexycb-s2": (
+        Path("data/demonstrations_dexycb_s2"),
+        Path("data/demonstrations_dexycb_s2_optimized"),
+        Path("results/trajectory_optimization/bc_downstream_dexycb_s2.json"),
+    ),
 }
 
 

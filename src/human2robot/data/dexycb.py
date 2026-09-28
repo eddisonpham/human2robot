@@ -206,7 +206,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--subject",
         default="20200709-subject-01",
-        help="Subject name, used to derive paths under the project root",
+        help=(
+            "Subject directory name under data/raw/dexycb. Requires "
+            "--output-dir unless it is the default subject"
+        ),
     )
     args = parser.parse_args(argv)
 
@@ -215,11 +218,13 @@ def main(argv: list[str] | None = None) -> int:
         if args.subject_dir is not None
         else project_root / "data" / "raw" / "dexycb" / args.subject
     )
-    output_dir = (
-        Path(args.output_dir)
-        if args.output_dir is not None
-        else project_root / "data" / "demonstrations_dexycb"
-    )
+    default_subject = "20200709-subject-01"
+    if args.output_dir is not None:
+        output_dir = Path(args.output_dir)
+    elif args.subject == default_subject:
+        output_dir = project_root / "data" / "demonstrations_dexycb"
+    else:
+        output_dir = None
 
     if not subject_dir.is_dir():
         print(
@@ -232,6 +237,14 @@ def main(argv: list[str] | None = None) -> int:
         print(
             f"no pose.npz sequences under {subject_dir}\n"
             "pass --subject-dir pointing at an extracted subject",
+            file=sys.stderr,
+        )
+        return 1
+    if output_dir is None:
+        print(
+            f"--output-dir is required when --subject is not {default_subject}: "
+            f"the default output holds {default_subject} demos and writing "
+            f"another subject over it would silently replace them",
             file=sys.stderr,
         )
         return 1

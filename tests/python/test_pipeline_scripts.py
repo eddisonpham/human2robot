@@ -65,7 +65,13 @@ def write_demo(path: Path, horizon: int = 30, dof: int = 22) -> None:
 
 
 def test_bc_demo_sets_are_disjoint_and_named(bc_script):
-    assert set(bc_script.DEMO_SETS) == {"synthetic", "dexycb"}
+    assert set(bc_script.DEMO_SETS) == {"synthetic", "dexycb", "dexycb-s2"}
+    raw_dirs = [v[0] for v in bc_script.DEMO_SETS.values()]
+    opt_dirs = [v[1] for v in bc_script.DEMO_SETS.values()]
+    out_paths = [v[2] for v in bc_script.DEMO_SETS.values()]
+    assert len(set(raw_dirs)) == len(raw_dirs)
+    assert len(set(opt_dirs)) == len(opt_dirs)
+    assert len(set(out_paths)) == len(out_paths)
     for raw_dir, opt_dir, out_path in bc_script.DEMO_SETS.values():
         assert raw_dir != opt_dir
         assert out_path.suffix == ".json"
@@ -258,7 +264,23 @@ def test_compare_control_tag_is_recorded(compare_script, tmp_path):
 def test_compare_missing_dexycb_dir_raises_with_a_command(
     compare_script, tmp_path, monkeypatch
 ):
-    monkeypatch.setattr(compare_script, "DEXYCB_DIR", tmp_path / "absent")
+    absent = (tmp_path / "absent", tmp_path / "absent_opt", tmp_path / "absent.json")
+    monkeypatch.setattr(
+        compare_script,
+        "SUBJECT_SETS",
+        {**compare_script.SUBJECT_SETS, "subject-01": absent},
+    )
     monkeypatch.setattr(compare_script, "SYNTH_DIR", tmp_path / "absent2")
     with pytest.raises(FileNotFoundError, match="human2robot.data.dexycb"):
         compare_script.main([])
+
+
+def test_compare_rejects_an_unknown_subject(compare_script, capsys):
+    assert compare_script.main(["--subject", "subject-99"]) == 1
+    assert "unknown subject" in capsys.readouterr().err
+
+
+def test_compare_subjects_write_to_separate_outputs(compare_script, tmp_path):
+    """Two subjects must not overwrite each other's report."""
+    outs = {v[2] for v in compare_script.SUBJECT_SETS.values()}
+    assert len(outs) == len(compare_script.SUBJECT_SETS)

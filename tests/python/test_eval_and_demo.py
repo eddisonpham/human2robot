@@ -182,6 +182,56 @@ def test_dexycb_cli_defaults_output_dir_under_project_root(monkeypatch, tmp_path
     assert captured["max_count"] == 2
 
 
+def test_dexycb_cli_refuses_to_overwrite_the_default_subject_demos(
+    monkeypatch, tmp_path, capsys
+):
+    """A non-default subject must not silently replace subject-01's demos.
+
+    `--subject` selects the input but the default `--output-dir` holds
+    subject-01's demos, so honouring the default would destroy them.
+    """
+    subject = tmp_path / "s2"
+    subject.mkdir()
+    called = []
+    monkeypatch.setattr(dexycb_mod, "discover_sequences", lambda d: [Path("x")])
+    monkeypatch.setattr(
+        dexycb_mod, "build_subject_demos", lambda *a, **k: called.append(a) or []
+    )
+    rc = dexycb_mod.main(
+        ["--subject-dir", str(subject), "--subject", "20200813-subject-02"]
+    )
+    assert rc == 1
+    assert called == []
+    assert "--output-dir is required" in capsys.readouterr().err
+
+
+def test_dexycb_cli_allows_a_second_subject_with_explicit_output(monkeypatch, tmp_path):
+    captured = {}
+    subject = tmp_path / "sub"
+    subject.mkdir()
+    monkeypatch.setattr(dexycb_mod, "discover_sequences", lambda d: [Path("x")])
+    monkeypatch.setattr(
+        dexycb_mod,
+        "build_subject_demos",
+        lambda s, o, seed=0, max_count=None: (
+            captured.update(subject=Path(s), out=Path(o)) or []
+        ),
+    )
+    out = tmp_path / "s2"
+    rc = dexycb_mod.main(
+        [
+            "--subject-dir",
+            str(subject),
+            "--subject",
+            "20200813-subject-02",
+            "--output-dir",
+            str(out),
+        ]
+    )
+    assert rc == 0
+    assert captured["out"] == out
+
+
 def test_dexycb_cli_honours_explicit_paths(monkeypatch, tmp_path):
     captured = {}
     subject = tmp_path / "sub"

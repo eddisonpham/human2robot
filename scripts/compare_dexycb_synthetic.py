@@ -31,6 +31,20 @@ DEXYCB_OPT_DIR = Path("data/demonstrations_dexycb_optimized")
 SYNTH_DIR = Path("data/demonstrations")
 OUT_PATH = Path("results/trajectory_optimization/real_vs_synthetic.json")
 
+# Subject-02 is held out entirely: no hyperparameter was selected on it.
+SUBJECT_SETS = {
+    "subject-01": (
+        Path("data/demonstrations_dexycb"),
+        Path("data/demonstrations_dexycb_optimized"),
+        Path("results/trajectory_optimization/real_vs_synthetic_s1.json"),
+    ),
+    "subject-02": (
+        Path("data/demonstrations_dexycb_s2"),
+        Path("data/demonstrations_dexycb_s2_optimized"),
+        Path("results/trajectory_optimization/real_vs_synthetic_s2.json"),
+    ),
+}
+
 DEXYCB_CAPTURE_DT = 1.0 / 30.0
 CONTROL_DT = 0.02
 
@@ -149,8 +163,20 @@ def reductions(report: dict) -> dict:
 
 
 def main(argv: list[str] | None = None) -> int:
-    write = "--no-write" not in (argv or sys.argv[1:])
-    dexycb_paths = sorted(DEXYCB_DIR.glob("dexycb_*.npz"))
+    argv = list(sys.argv[1:] if argv is None else argv)
+    write = "--no-write" not in argv
+    subject = "subject-01"
+    if "--subject" in argv:
+        subject = argv[argv.index("--subject") + 1]
+    if subject not in SUBJECT_SETS:
+        print(
+            f"unknown subject {subject!r}; choose from {sorted(SUBJECT_SETS)}",
+            file=sys.stderr,
+        )
+        return 1
+    dexycb_dir, dexycb_opt_dir, out_path = SUBJECT_SETS[subject]
+
+    dexycb_paths = sorted(dexycb_dir.glob("dexycb_*.npz"))
     synth_paths = sorted(p for p in SYNTH_DIR.glob("*.npz") if "_opt" not in p.stem)
     if not dexycb_paths:
         raise FileNotFoundError(
@@ -159,7 +185,7 @@ def main(argv: list[str] | None = None) -> int:
     if not synth_paths:
         raise FileNotFoundError("run generate_synthetic_demos first")
 
-    out_dir = DEXYCB_OPT_DIR if write else None
+    out_dir = dexycb_opt_dir if write else None
     if write:
         out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -171,13 +197,14 @@ def main(argv: list[str] | None = None) -> int:
     dexycb_report.update(reductions(dexycb_report))
     synth_report.update(reductions(synth_report))
     combined = {
+        "subject": subject,
         "control_dt": CONTROL_DT,
         "dexycb_capture_dt": DEXYCB_CAPTURE_DT,
         "dexycb": dexycb_report,
         "synthetic": synth_report,
     }
-    OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    OUT_PATH.write_text(json.dumps(combined, indent=2))
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(combined, indent=2))
 
     header = (
         f"{'metric':<20}{'DEXYCB raw':>12}{'-> opt':>10}{'red%':>8}"
@@ -197,9 +224,9 @@ def main(argv: list[str] | None = None) -> int:
         f"convergence: dexycb {dexycb_report['converged']}/{dexycb_report['count']}, "
         f"synthetic {synth_report['converged']}/{synth_report['count']}"
     )
-    print(f"report written to {OUT_PATH}")
+    print(f"report written to {out_path}")
     if write:
-        print(f"optimized DexYCB demos written to {DEXYCB_OPT_DIR}")
+        print(f"optimized {subject} demos written to {dexycb_opt_dir}")
     return 0
 
 
