@@ -347,12 +347,14 @@ uv run ruff check .        # lint
 uv run ruff format .       # format
 ```
 
-The gate is: `ruff check`, `ruff format --check`, and `pytest` all pass. It runs
-locally and in CI (`.github/workflows/ci.yml`), which also builds the C++
-library and runs its GoogleTest suite. The CI job is pinned to `windows-latest`
-because `pyproject.toml` restricts dependency resolution to win32/AMD64 and
-sources torch from a cu128 index for that platform; making CI portable means
-changing that pin.
+The gate is: `ruff check`, `ruff format --check`, and `pytest` all pass. There is
+no CI configuration, so run it locally before committing.
+
+The C++ suite is separate and must be run by hand after a change under `cpp/`:
+
+```bash
+cmake --build cpp/build && ctest --test-dir cpp/build --output-on-failure
+```
 
 ## Scope status
 
