@@ -1,4 +1,11 @@
-"""Deterministic policy evaluation in a fresh single environment."""
+"""Deterministic policy evaluation in a fresh single environment.
+
+`evaluate` builds and closes its own environment. `evaluate_env` is the same
+rollout against an environment the caller owns, which is what makes it possible
+to evaluate under a mutated model and restore it afterwards; a caller that had
+to build a fresh environment per condition could not randomize the physics
+without also changing the initial state distribution.
+"""
 
 import numpy as np
 
@@ -21,9 +28,15 @@ def build_single_env(env_id: str):
     return env
 
 
-def evaluate(sac: SAC, env_id: str, episodes: int, seed: int) -> dict[str, float]:
-    """Run deterministic evaluation episodes and return summary metrics."""
-    env = build_single_env(env_id)
+def evaluate_env(sac: SAC, env, episodes: int, seed: int) -> dict[str, float]:
+    """Run deterministic episodes in a caller-owned environment.
+
+    The environment is not closed. Each episode starts from `seed + i` so two
+    calls with the same seed see the same initial states even if they differ in
+    everything else.
+    """
+    if episodes < 1:
+        raise ValueError(f"episodes must be >= 1, got {episodes}")
     env.action_space.seed(seed)
     returns, lengths = [], []
     for i in range(episodes):
@@ -38,9 +51,17 @@ def evaluate(sac: SAC, env_id: str, episodes: int, seed: int) -> dict[str, float
             done = term or trunc
         returns.append(total)
         lengths.append(steps)
-    env.close()
     return {
         "eval_return_mean": float(np.mean(returns)),
         "eval_return_std": float(np.std(returns)),
         "eval_episode_steps": float(np.mean(lengths)),
     }
+
+
+def evaluate(sac: SAC, env_id: str, episodes: int, seed: int) -> dict[str, float]:
+    """Run deterministic evaluation episodes and return summary metrics."""
+    env = build_single_env(env_id)
+    try:
+        return evaluate_env(sac, env, episodes=episodes, seed=seed)
+    finally:
+        env.close()

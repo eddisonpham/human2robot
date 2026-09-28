@@ -23,6 +23,7 @@ import numpy as np
 import torch
 
 from human2robot.data.allegro_demos import load_demo_npz
+from human2robot.optimization.experiment import split_transition
 
 RAW_DIR = Path("data/demonstrations")
 OPT_DIR = Path("data/demonstrations_optimized")
@@ -56,19 +57,13 @@ def load_positions(directory: Path, suffix: str = "") -> list[np.ndarray]:
 
 
 def make_transition_dataset(trajectories: list[np.ndarray], rng: np.random.Generator):
-    """Transitions (q_t -> q_{t+1}) as (obs, action) regression pairs."""
-    obs, acts = [], []
-    for traj in trajectories:
-        obs.append(traj[:-1])
-        acts.append(traj[1:] - traj[:-1])
-    obs = np.concatenate(obs, axis=0)
-    acts = np.concatenate(acts, axis=0)
-    idx = rng.permutation(len(obs))
-    n_holdout = max(1, int(0.1 * len(obs)))
-    return (obs[idx[n_holdout:]], acts[idx[n_holdout:]]), (
-        obs[idx[:n_holdout]],
-        acts[idx[:n_holdout]],
-    )
+    """Transitions (q_t -> q_{t+1}) as (obs, action) regression pairs.
+
+    This is the published transition split, defined once in
+    `optimization.experiment`. It was a private copy here, one of four spellings
+    of the same 10 percent holdout in this repository.
+    """
+    return split_transition(trajectories, rng, fraction=0.1)
 
 
 class DeltaMLP(torch.nn.Module):

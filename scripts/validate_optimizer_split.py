@@ -22,7 +22,6 @@ from pathlib import Path
 import numpy as np
 
 from human2robot.cpp_bindings import (
-    OptimizerConfig,
     cubic_resample,
     optimize_trajectory,
 )
@@ -33,14 +32,14 @@ DEXYCB_S2_DIR = Path("data/demonstrations_dexycb_ik_s2")
 SYNTH_DIR = Path("data/demonstrations")
 DEFAULT_OUT = Path("results/trajectory_optimization/optimizer_split.json")
 
-CAPTURE_DT = 1.0 / 30.0
-CONTROL_DT = 0.02
-
-_LOWER = np.array([0.0] * 6 + [-0.47] + [0.196] * 3 + [-0.175] + [0.0] * 8 + [-0.8] * 3)
-_UPPER = np.array([0.0] * 6 + [0.47] + [1.61] * 3 + [1.72] + [1.57] * 8 + [0.0] * 3)
+from human2robot.optimization.experiment import (  # noqa: E402
+    CAPTURE_DT,
+    CONTROL_DT,
+    NOISE_SCALE,
+    make_optimizer_config,
+)
 
 STEP_GRID = (0.05, 0.1, 0.2, 0.35, 0.5, 0.75, 1.0, 1.5, 2.0)
-NOISE_SCALE = 0.0
 
 
 def load_dexycb(directory: Path = DEXYCB_DIR) -> list[np.ndarray]:
@@ -61,30 +60,12 @@ def load_synthetic() -> list[np.ndarray]:
     ]
 
 
-def make_config(step_size: float, noise_scale: float = NOISE_SCALE) -> OptimizerConfig:
-    return OptimizerConfig(
-        dof=22,
-        lower=_LOWER,
-        upper=_UPPER,
-        max_velocity=np.full(22, 2.0),
-        max_acceleration=np.full(22, 20.0),
-        tracking=1.0,
-        velocity=0.05,
-        acceleration=0.05,
-        jerk=0.02,
-        limits_weight=10.0,
-        max_iterations=300,
-        convergence_tolerance=1e-4,
-        step_size=step_size,
-        noise_scale=noise_scale,
-        seed=0,
-    )
-
-
 def score(trajectories: list[np.ndarray], step_size: float) -> dict:
     """Run the optimizer and summarize the cost reduction it achieved."""
     results = [
-        optimize_trajectory(q, q, CONTROL_DT, make_config(step_size))
+        optimize_trajectory(
+            q, q, CONTROL_DT, make_optimizer_config(step_size=step_size)
+        )
         for q in trajectories
     ]
     improvements = np.array([r.improvement_pct for r in results], dtype=float)

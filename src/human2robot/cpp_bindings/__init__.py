@@ -40,7 +40,12 @@ _mod = _load_module()
 
 
 class OptimizerConfig:
-    """Typed facade over the C++ optimizer config."""
+    """Typed facade over the C++ optimizer config.
+
+    The bound arrays are what the optimizer actually enforces, so a `dof` that
+    disagrees with their length would be recorded here and silently ignored
+    there. Lengths are checked at construction.
+    """
 
     def __init__(
         self,
@@ -61,6 +66,19 @@ class OptimizerConfig:
         noise_scale: float = 0.1,
         seed: int = 0,
     ) -> None:
+        arrays = {
+            "lower": lower,
+            "upper": upper,
+            "max_velocity": max_velocity,
+            "max_acceleration": max_acceleration,
+        }
+        for name, values in arrays.items():
+            if len(values) != dof:
+                raise ValueError(f"{name} has length {len(values)}, expected dof={dof}")
+        # Equal bounds are legal: the six base coordinates are pinned at zero,
+        # not actuated. Only an inverted interval is an error.
+        if np.any(np.asarray(lower) > np.asarray(upper)):
+            raise ValueError("lower must not exceed upper")
         self._config = _mod.OptimizerConfig()
         self._config.limits.lower = np.asarray(lower, dtype=float)
         self._config.limits.upper = np.asarray(upper, dtype=float)

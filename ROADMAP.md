@@ -4,17 +4,54 @@ Ordered by what most protects the project's claims, not by what is most
 interesting. Each item names the defect or gap it closes and how you would know
 it is done. Verified against the repository at commit `f28423d`.
 
+## Completed in the September 28 pass
+
+- [x] **A feasibility metric against the simulated hand** (was Tier 0 item 1).
+  `evaluation/feasibility.py`, calibrated on three cases of known difficulty,
+  with `settle_steps` removing the hand's 0.5 s start transient. Measured on
+  the synthetic set it also replaced the fake replay check with a real one, and
+  showed optimization *halves* tracking drift (0.25 to 0.30 rad raw, 0.11
+  optimized) rather than merely looking smoother.
+- [x] **`domain_randomized_eval` really randomizes** (was Tier 1 item 1).
+- [x] **The degenerate retargeter is gone** and a rank/dimensionality invariant
+  prevents it recurring.
+- [x] **One definition of the splits.** Four private copies existed across
+  `check_bc_split_granularity.py`, `run_downstream_bc.py`, and the experiment
+  module. All four now use `optimization.experiment`.
+- [x] **Joint limits come from the model.** The four hand-written copies had
+  already drifted, and 15 of 16 finger entries were wrong.
+
+## Defects this pass found that were not on the list
+
+These are worth reading before trusting any earlier number.
+
+- **`OptimizerConfig` recorded a `dof` it did not enforce.** The facade stored
+  the parameter and set only the arrays, so a mismatched length was recorded
+  here and ignored by the optimizer. Lengths are now validated at construction.
+- **`split_prefix` could hand back an empty holdout.** A one-configuration tail
+  produced zero test transitions, which the packer then silently concatenated
+  into an empty data set. Both sides now require an adjacent pair, and the
+  function raises instead of splitting nothing.
+- **`to_transitions` kept zero-row pairs.** A single-step trajectory yielded a
+  pair of empty arrays, which is truthy, so the emptiness check never fired.
+- **A zero baseline was reported as a 100 percent improvement.** The
+  `max(raw, 1e-12)` guard turned an unchanging metric into a full improvement
+  in the published tables. `pairwise_reductions` now raises, which is a
+  behaviour change and is why `test_pipeline_scripts.py` asserts the rejection.
+- **`validate_open_loop_replay` was a third fake.** Named for a MuJoCo replay,
+  tested in a file named `test_mujoco_replay_optimized.py`, and never touched
+  the simulator: it compared `a_demo` arithmetic against stub bounds of
+  `zeros(22)` and `ones(22)`. Removed; `evaluation.feasibility` is the real one.
+- **The Rust server has no version control at all.** Worse than "untracked" —
+  `rust/inference_server/.git` is an accidental `git init` with zero commits,
+  zero refs, zero objects and no remote. The 121 lines of `main.rs` exist only
+  on this disk. See the open decision below.
+
 ## Tier 0: things that would let a false number back into the docs
 
-- [ ] **A feasibility metric against the simulated hand.** Nothing in the repo
-  currently tests whether the Allegro can *execute* an optimized trajectory.
-  Every quality claim rests on a behavior-cloning proxy that measures
-  regressibility, which the retargeting finding showed will happily reward a
-  degenerate signal. This is the single highest-value remaining item: it is
-  the metric the project's stated purpose actually needs.
-  Done when a committed script reports, per trajectory, whether the
-  constraint-projected trajectory is dynamically executable in `AllegroPickupEnv`
-  under open-loop replay, and the doc tables carry that column.
+- [x] **A feasibility metric against the simulated hand.** Done, see above.
+  Remaining follow-up: get the doc tables to carry the executability column,
+  which is the part of the original definition of done that is still open.
 - [ ] **Pin the tail-extrapolation gap as a tracked limitation with an owner.**
   Whole-trajectory holdout is +49.7% / +51.4%, but extrapolating the tail of
   every trajectory is +6.1% on subject-01 and **-24.6% on subject-02** against
@@ -32,20 +69,31 @@ it is done. Verified against the repository at commit `f28423d`.
 
 ## Tier 1: correctness and reproducibility gaps
 
-- [ ] **Fix the `domain_randomized_eval` stub.** It is 31 lines whose docstring
-  says "no env mutation": it loops over scales and re-evaluates the *same*
-  deterministic environment, so every scale returns the same number. Conditions
-  D and E are blocked precisely because this was never implemented, and the
-  function currently looks like working code.
-  Done when mass, friction, and actuator-gain randomization actually mutate the
-  MuJoCo model, the function is covered by tests that assert the scales produce
-  *different* returns, and `docs/FINDINGS_residual_degeneracy.md` is updated.
-- [ ] **Track `rust/` or delete it.** `/rust/` is gitignored with a comment
-  claiming the Phase 10 work is "unstarted", but `rust/inference_server/src/
-  main.rs` is 121 lines of working axum + ONNX Runtime code. A whole subsystem
-  is invisible to version control and the comment actively misdescribes it.
-  Done when the source and `Cargo.toml` are tracked with `target/` ignored
-  narrowly, and `cargo test` passes; or the directory is removed.
+- [x] **Fix the `domain_randomized_eval` stub.** Done. `body_mass`,
+  `geom_friction`, `dof_damping` and `actuator_gainprm` are scaled per condition
+  and restored unconditionally, including on exception. Conditions now share
+  initial states, so the spread is attributable to the perturbation; deriving a
+  seed from the scale would have confounded the two. A test observes the model
+  *during* the rollouts and asserts each condition saw its own scale, which is
+  the property the old implementation failed. A non-MuJoCo environment now
+  raises instead of returning a number nothing was perturbed to produce.
+  Still open: `docs/FINDINGS_residual_degeneracy.md` needs updating to say D and
+  E are no longer blocked on the code, only on the physics being non-trivial.
+- [ ] **Decide the fate of conditions D and E.** The configs
+  `tier_b_cond_d.yaml` and `tier_b_cond_e.yaml` are still present and a reader
+  will assume they are runnable. They are structurally degenerate: the nominal
+  physics model *is* the simulator, so the residual is identically zero. Note
+  that domain randomization now exists, so this is a physics question and no
+  longer an implementation gap.
+- [ ] **Track `rust/` or delete it. Needs your decision.** The gitignore
+  comment no longer lies (it now records what is actually there), but the code
+  still has no version control: `rust/inference_server/.git` is an empty
+  `git init` with zero commits and zero objects. Folding the code into this
+  repository requires removing that vestigial directory first, and deleting a
+  git repository is not a call to make on your behalf. Two clean options:
+  (a) remove `rust/inference_server/.git` and track `rust/` here with
+  `target/` ignored narrowly, or (b) make it a real separate repository with
+  its own commits and remote. I verified nothing would be lost either way.
 - [ ] **Decide the fate of conditions D and E.** The configs
   `tier_b_cond_d.yaml` and `tier_b_cond_e.yaml` are still present and a reader
   will assume they are runnable. They are structurally degenerate: the nominal

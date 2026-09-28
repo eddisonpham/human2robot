@@ -260,3 +260,186 @@ def test_retargeting_script_refuses_to_overwrite_the_default_subject() -> None:
     second = SimpleNamespace(output_dir=None, subject="20200813-subject-02")
     with pytest.raises(SystemExit, match="--output-dir is required"):
         _resolve_output_dir(second)
+
+
+# --- actuator limits -----------------------------------------------------------
+#
+# The Allegro bounds were written out in four places and each copy had drifted
+# from the robot: 15 of 16 finger entries disagreed with the MuJoCo model, and
+# the thumb's upper bound was 0.0 against a real 1.719. Every trajectory the
+# optimizer produced was projected onto those wrong bounds, so the claim that
+# optimization projects onto the robot's joint limits was false. These tests pin
+# the single source of truth against the model.
+
+
+def test_actuator_limits_match_the_mujoco_model() -> None:
+    from human2robot.data import limits
+
+    env = AllegroPickupEnv()
+    model_lower = env.model.actuator_ctrlrange[:, 0].copy()
+    model_upper = env.model.actuator_ctrlrange[:, 1].copy()
+    finger_lower, finger_upper = limits.finger_bounds()
+    assert np.allclose(finger_lower, model_lower)
+    assert np.allclose(finger_upper, model_upper)
+
+
+def test_actuator_limits_cover_every_actuator_in_order() -> None:
+    """Index, middle, ring, then thumb. A wrong order silently mis-projects."""
+    from human2robot.data import limits
+
+    env = AllegroPickupEnv()
+    names = [env.model.joint(env.model.actuator_trnid[i, 0]).name for i in range(16)]
+    assert names == [
+        "ffj0",
+        "ffj1",
+        "ffj2",
+        "ffj3",
+        "mfj0",
+        "mfj1",
+        "mfj2",
+        "mfj3",
+        "rfj0",
+        "rfj1",
+        "rfj2",
+        "rfj3",
+        "thj0",
+        "thj1",
+        "thj2",
+        "thj3",
+    ]
+    assert len(limits.FINGER_LOWER) == 16
+    assert limits.ACTUATOR_LOWER.shape == (limits.DOF,)
+    assert limits.ACTUATOR_UPPER.shape == (limits.DOF,)
+
+
+def test_thumb_bounds_are_not_the_three_finger_bounds() -> None:
+    """The thumb is a different linkage; it must not inherit finger bounds.
+
+    This is the specific value that was wrong: the thumb's three distal joints
+    were constrained to <= 0 while the real thumb reaches 1.719.
+    """
+    from human2robot.data import limits
+
+    assert limits.FINGER_UPPER[15] == pytest.approx(1.719, abs=1e-6)
+    assert limits.FINGER_LOWER[12] == pytest.approx(0.263, abs=1e-6)
+    assert not np.allclose(limits.FINGER_LOWER[12:], limits.FINGER_LOWER[:4])
+
+
+def test_base_coordinates_are_pinned_not_freed() -> None:
+    """Zero-width bounds pin the base; they do not mean "unbounded"."""
+    from human2robot.data import limits
+
+    assert np.allclose(limits.ACTUATOR_LOWER[:6], 0.0)
+    assert np.allclose(limits.ACTUATOR_UPPER[:6], 0.0)
+    assert np.all(limits.ACTUATOR_LOWER[6:] < limits.ACTUATOR_UPPER[6:])
+
+
+def test_optimizer_receives_the_model_limits() -> None:
+    """The pipeline must not reintroduce its own copy of the bounds."""
+    from human2robot.data import limits
+    from human2robot.optimization.pipeline import OptimizationConfig
+
+    config = OptimizationConfig(dt=limits.CONTROL_DT).to_optimizer_config(limits.DOF)
+    assert np.allclose(config._config.limits.lower, limits.ACTUATOR_LOWER)
+    assert np.allclose(config._config.limits.upper, limits.ACTUATOR_UPPER)
+
+
+def test_normalized_targets_land_inside_the_model_range() -> None:
+    from human2robot.data import limits
+
+    angles = limits.normalized_targets_to_finger_angles(np.zeros((3, 16)))
+    low, high = limits.finger_bounds()
+    assert np.all(angles >= low - 1e-9)
+    assert np.all(angles <= high + 1e-9)
+    assert angles.shape == (3, 16)
+
+
+# --- dex-retargeting joint order ----------------------------------------------
+#
+# dex-retargeting emits fingers in [index, thumb, middle, ring] order while the
+# Allegro model is [index, middle, ring, thumb]. The two were treated as the
+# same, so every retargeted demo drove the thumb with the middle finger's
+# motion. Found from the data: the demo column ranges match the permuted joints
+# to within 0.001 rad, which no other assignment achieves.
+
+
+def test_dexretarget_order_is_a_permutation() -> None:
+    from human2robot.data import limits
+
+    fwd = limits.DEXRETARGET_TO_MODEL_FINGER
+    assert sorted(fwd) == list(range(16))
+    assert sorted(limits.MODEL_TO_DEXRETARGET_FINGER) == list(range(16))
+
+
+def test_dexretarget_permutation_is_its_own_inverse_pair() -> None:
+    from human2robot.data import limits
+
+    fwd = limits.DEXRETARGET_TO_MODEL_FINGER
+    inv = limits.MODEL_TO_DEXRETARGET_FINGER
+    for model_index, dex_index in enumerate(fwd):
+        assert inv[dex_index] == model_index
+
+
+def test_dexretarget_reorder_moves_the_thumb_last() -> None:
+    """The thumb is the 2nd block in dex-retargeting and the 4th in the model.
+
+    This is the specific mislabelling: columns 4-7 held thumb motion but were
+    written into the middle finger's slots.
+    """
+    from human2robot.data import limits
+
+    assert limits.DEXRETARGET_TO_MODEL_FINGER[0:4] == (0, 1, 2, 3)
+    assert limits.DEXRETARGET_TO_MODEL_FINGER[4:8] == (8, 9, 10, 11)
+    assert limits.DEXRETARGET_TO_MODEL_FINGER[8:12] == (12, 13, 14, 15)
+    assert limits.DEXRETARGET_TO_MODEL_FINGER[12:16] == (4, 5, 6, 7)
+
+
+def test_fingers_from_dexretarget_permutes_rows_and_columns() -> None:
+    from human2robot.data import limits
+
+    q16 = np.arange(32, dtype=np.float64).reshape(2, 16)
+    out = limits.fingers_from_dexretarget(q16)
+    assert out.shape == (2, 16)
+    assert out[0].tolist() == [0, 1, 2, 3, 8, 9, 10, 11, 12, 13, 14, 15, 4, 5, 6, 7]
+    assert out[1].tolist() == [16 + i for i in out[0]]
+
+
+def test_fingers_from_dexretarget_rejects_wrong_width() -> None:
+    from human2robot.data import limits
+
+    with pytest.raises(ValueError, match="angles shape"):
+        limits.fingers_from_dexretarget(np.zeros((3, 15)))
+
+
+def test_retargeted_demos_fit_the_model_bounds() -> None:
+    """Demos on disk must already be in model order and inside model bounds.
+
+    This is the empirical proof the reorder is right rather than merely
+    plausible. Demo column ranges must sit inside the bounds of the joint they
+    claim to be. Before the reorder, thumb motion landed in middle-finger slots
+    and every column matched the wrong joint's range.
+    """
+    from human2robot.data import limits
+    from human2robot.data.allegro_demos import load_demo_npz
+
+    directory = "data/demonstrations_dexycb_ik"
+    if not Path(directory).is_dir():
+        pytest.skip("IK demos not generated")
+    q16 = np.concatenate(
+        [load_demo_npz(p).q[:, 6:] for p in sorted(Path(directory).glob("*.npz"))]
+    )
+    low, high = limits.finger_bounds()
+    assert np.all(q16.min(axis=0) >= low - 0.02)
+    assert np.all(q16.max(axis=0) <= high + 0.02)
+
+
+def test_reorder_repairs_a_mislabelled_input() -> None:
+    """The permutation must be the thing that fixes a dex-ordered sequence."""
+    from human2robot.data import limits
+
+    # A dex-ordered row: thumb values (0.3) sit in slots 4-7.
+    dex_ordered = np.zeros((1, 16), dtype=np.float64)
+    dex_ordered[0, 4:8] = 0.3
+    model_ordered = limits.fingers_from_dexretarget(dex_ordered)
+    assert np.allclose(model_ordered[0, 12:16], 0.3)
+    assert np.allclose(model_ordered[0, 4:8], 0.0)

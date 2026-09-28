@@ -121,30 +121,3 @@ def load_demo_npz(path: str | Path) -> DemoTrajectory:
     )
     traj.validate()
     return traj
-
-
-def validate_open_loop_replay(
-    paths: list[str | Path], tolerance: float = 0.1, sample: int = 20
-) -> dict[str, float]:
-    """Replay a_demo open-loop and check drift (agents/09 Phase 5)."""
-    rng = np.random.default_rng(0)
-    indices = rng.choice(len(paths), size=min(sample, len(paths)), replace=False)
-    errors = []
-    for idx in indices:
-        traj = load_demo_npz(paths[idx])
-        # trivial check: a_demo reconstructs q deltas within tolerance
-        low = np.zeros(22)  # base range stub
-        high = np.ones(22)
-        err = float(
-            np.mean(
-                np.abs(
-                    traj.a_demo[1:]
-                    - np.diff(traj.q, axis=0) / np.maximum((high - low) / 2, 1e-6)
-                )
-            )
-        )
-        errors.append(err)
-    return {
-        "mean_error": float(np.mean(errors)) if errors else 0.0,
-        "pass": bool(np.mean(errors) < tolerance) if errors else False,
-    }

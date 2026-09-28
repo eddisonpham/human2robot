@@ -16,15 +16,12 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from human2robot.cpp_bindings import OptimizerConfig, optimize_trajectory
 from human2robot.data.allegro_demos import load_demo_npz
-
-_ALLEGRO_LOWER = np.array(
-    [0.0] * 6 + [-0.47] + [0.196] * 3 + [-0.175] + [0.0] * 8 + [-0.8] * 3
+from human2robot.data.limits import (
+    ACTUATOR_LOWER,
+    ACTUATOR_UPPER,
+    MAX_ACCELERATION,
+    MAX_VELOCITY,
 )
-_ALLEGRO_UPPER = np.array(
-    [0.0] * 6 + [0.47] + [1.61] * 3 + [1.72] + [1.57] * 8 + [0.0] * 3
-)
-_ALLEGRO_MAX_VELOCITY = np.full(22, 2.0)
-_ALLEGRO_MAX_ACCELERATION = np.full(22, 20.0)
 
 
 class OptimizationConfig(BaseModel):
@@ -51,10 +48,10 @@ class OptimizationConfig(BaseModel):
     def to_optimizer_config(self, dof: int = 22) -> OptimizerConfig:
         return OptimizerConfig(
             dof=dof,
-            lower=_ALLEGRO_LOWER[:dof],
-            upper=_ALLEGRO_UPPER[:dof],
-            max_velocity=_ALLEGRO_MAX_VELOCITY[:dof],
-            max_acceleration=_ALLEGRO_MAX_ACCELERATION[:dof],
+            lower=ACTUATOR_LOWER[:dof],
+            upper=ACTUATOR_UPPER[:dof],
+            max_velocity=MAX_VELOCITY[:dof],
+            max_acceleration=MAX_ACCELERATION[:dof],
             tracking=self.tracking,
             velocity=self.velocity,
             acceleration=self.acceleration,

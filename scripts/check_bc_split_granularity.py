@@ -32,53 +32,17 @@ from run_downstream_bc import (  # noqa: E402
     train_bc,
 )
 
-CONTROL_DT = 0.02
-CAPTURE_DT = 1.0 / 30.0
-
-
-def to_transitions(trajs: list[np.ndarray]) -> list[tuple[np.ndarray, np.ndarray]]:
-    return [(t[:-1], t[1:] - t[:-1]) for t in trajs]
-
-
-def split_transition(trajs, rng):
-    """Random 10 percent of pooled transitions, as published."""
-    pairs = to_transitions(trajs)
-    obs = np.concatenate([o for o, _ in pairs])
-    acts = np.concatenate([a for _, a in pairs])
-    idx = rng.permutation(len(obs))
-    n = max(1, int(0.1 * len(obs)))
-    return (obs[idx[n:]], acts[idx[n:]]), (obs[idx[:n]], acts[idx[:n]])
-
-
-def split_trajectory(trajs, rng):
-    """Whole trajectories held out, so no adjacent transition can leak."""
-    order = rng.permutation(len(trajs))
-    n_test = max(1, int(0.1 * len(trajs)))
-    test = [trajs[i] for i in order[:n_test]]
-    train = [trajs[i] for i in order[n_test:]]
-    return _pack(train), _pack(test)
-
-
-def split_prefix(trajs, rng):
-    """The tail of every trajectory, a temporal extrapolation."""
-    del rng
-    train, test = [], []
-    for t in trajs:
-        cut = max(1, int(0.9 * len(t)))
-        train.append(t[:cut])
-        test.append(t[cut:])
-    return _pack(train), _pack(test)
-
-
-def _pack(trajs):
-    pairs = to_transitions(trajs)
-    if not pairs:
-        return np.zeros((0, 22), np.float32), np.zeros((0, 22), np.float32)
-    return (
-        np.concatenate([o for o, _ in pairs]),
-        np.concatenate([a for _, a in pairs]),
-    )
-
+# The three splits are defined once in `optimization.experiment`. They used to
+# be copied here with their own spelling, including a hardcoded 22 for the
+# degree-of-freedom count and a prefix cut that silently produced an empty
+# holdout on a short trajectory. This script produced the published granularity
+# finding, so its splits have to be the tested ones rather than private
+# duplicates that can drift away from them.
+from human2robot.optimization.experiment import (  # noqa: E402
+    split_prefix,
+    split_trajectory,
+    split_transition,
+)
 
 SPLITS = {
     "transition": split_transition,

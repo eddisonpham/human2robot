@@ -17,14 +17,20 @@ from pathlib import Path
 import numpy as np
 
 from human2robot.cpp_bindings import (
-    OptimizerConfig,
     compute_metrics,
     cubic_resample,
     optimize_trajectory,
 )
+from human2robot.data import limits
 from human2robot.data.allegro_demos import load_demo_npz
 from human2robot.data.processing import demo_actions, differentiate
 from human2robot.data.schema import DEMO_SCHEMA_VERSION
+from human2robot.optimization.experiment import (
+    CONTROL_DT,
+    aggregate_metrics,
+    make_optimizer_config,
+    pairwise_reductions,
+)
 
 DEXYCB_DIR = Path("data/demonstrations_dexycb")
 DEXYCB_OPT_DIR = Path("data/demonstrations_dexycb_optimized")
@@ -46,56 +52,12 @@ SUBJECT_SETS = {
 }
 
 DEXYCB_CAPTURE_DT = 1.0 / 30.0
-CONTROL_DT = 0.02
-
-_LOWER = np.array([0.0] * 6 + [-0.47] + [0.196] * 3 + [-0.175] + [0.0] * 8 + [-0.8] * 3)
-_UPPER = np.array([0.0] * 6 + [0.47] + [1.61] * 3 + [1.72] + [1.57] * 8 + [0.0] * 3)
-
-
-def make_config(seed: int, max_iterations: int = 300) -> OptimizerConfig:
-    # noise_scale=0 disables the per-timestep Gaussian perturbation. With it on,
-    # the noise raises jerk faster than the tracking pull lowers it, the first
-    # candidate exceeds twice the current cost, and the search aborts at
-    # iteration 1 having achieved zero improvement. step_size=0.5 is the
-    # plateau of the descent rate: 0.5 and 1.0 give identical results and 2.0 is
-    # slightly worse. Both values were selected on this same data set, which is
-    # a caveat on the reported convergence figures.
-    return OptimizerConfig(
-        dof=22,
-        lower=_LOWER,
-        upper=_UPPER,
-        max_velocity=np.full(22, 2.0),
-        max_acceleration=np.full(22, 20.0),
-        tracking=1.0,
-        velocity=0.05,
-        acceleration=0.05,
-        jerk=0.02,
-        limits_weight=10.0,
-        max_iterations=max_iterations,
-        convergence_tolerance=1e-4,
-        step_size=0.5,
-        noise_scale=0.0,
-        seed=seed,
-    )
-
-
-def aggregate(metrics_rows: list[dict]) -> dict:
-    keys = ("max_velocity", "max_acceleration", "max_jerk", "smoothness")
-    out = {}
-    for key in keys:
-        values = np.array([row[key] for row in metrics_rows], dtype=float)
-        out[key] = {
-            "mean": float(values.mean()),
-            "std": float(values.std()),
-            "max": float(values.max()),
-        }
-    return out
 
 
 def process_set(
     demo_paths: list[Path], seed: int, resample: bool, out_dir: Path | None = None
 ) -> dict:
-    config = make_config(seed)
+    config = make_optimizer_config(seed=seed)
     raw_rows, opt_rows, converged = [], [], 0
     for path in demo_paths:
         demo = load_demo_npz(path)
@@ -118,8 +80,8 @@ def process_set(
     return {
         "count": len(demo_paths),
         "converged": converged,
-        "raw": aggregate(raw_rows),
-        "optimized": aggregate(opt_rows),
+        "raw": aggregate_metrics(raw_rows),
+        "optimized": aggregate_metrics(opt_rows),
     }
 
 
@@ -136,7 +98,7 @@ def write_optimized_demo(
     """
     q_opt = np.asarray(q_opt, dtype=np.float32)
     qdot, _ = differentiate(q_opt, CONTROL_DT)
-    a_demo = demo_actions(q_opt, _LOWER, _UPPER)
+    a_demo = demo_actions(q_opt, limits.ACTUATOR_LOWER, limits.ACTUATOR_UPPER)
     length = len(q_opt)
     np.savez_compressed(
         out_path,
@@ -154,12 +116,7 @@ def write_optimized_demo(
 
 
 def reductions(report: dict) -> dict:
-    out = {}
-    for key in ("max_velocity", "max_acceleration", "max_jerk", "smoothness"):
-        raw_mean = report["raw"][key]["mean"]
-        opt_mean = report["optimized"][key]["mean"]
-        out[f"{key}_reduction_pct"] = 100.0 * (1.0 - opt_mean / max(raw_mean, 1e-12))
-    return out
+    return pairwise_reductions(report["raw"], report["optimized"])
 
 
 def main(argv: list[str] | None = None) -> int:

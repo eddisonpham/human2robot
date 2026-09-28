@@ -41,13 +41,6 @@ _FINGER_KEYPOINT_BASES = (1, 5, 9, 13)
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
-_ALLEGRO_LOW = np.array(
-    [0.0] * 6 + [-0.47] + [0.196] * 3 + [-0.175] + [0.0] * 8 + [-0.8] * 3
-)
-_ALLEGRO_HIGH = np.array(
-    [0.0] * 6 + [0.47] + [1.61] * 3 + [1.72] + [1.57] * 8 + [0.0] * 3
-)
-
 
 def axis_angle_to_matrix(v: np.ndarray) -> np.ndarray:
     theta = float(np.linalg.norm(v))
@@ -189,7 +182,19 @@ def main(argv: list[str]) -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     sys.path.insert(0, str(_PROJECT_ROOT / "src"))
+    from human2robot.data import limits
     from human2robot.data.processing import demo_actions, differentiate, smooth
+
+    def to_model_order(q16: np.ndarray) -> np.ndarray:
+        """Reorder dex-retargeting output into Allegro model order.
+
+        dex-retargeting emits [index, thumb, middle, ring]; the model is
+        [index, middle, ring, thumb]. Without this the thumb is driven by the
+        middle finger's motion and each joint is projected against another
+        joint's limit.
+        """
+        return limits.fingers_from_dexretarget(q16)
+
     from human2robot.data.schema import DEMO_SCHEMA_VERSION, DemoTrajectory
 
     retargeting = build_dexpilot()
@@ -207,10 +212,10 @@ def main(argv: list[str]) -> int:
         except ValueError:
             rejected += 1
             continue
-        q16 = smooth(q16, window=5)
+        q16 = smooth(to_model_order(q16), window=5)
         q22 = to_allegro_q22(q16)
         qdot, _ = differentiate(q22)
-        a_demo = demo_actions(q22, _ALLEGRO_LOW, _ALLEGRO_HIGH)
+        a_demo = demo_actions(q22, limits.ACTUATOR_LOWER, limits.ACTUATOR_UPPER)
         n = len(q22)
         object_pose = np.zeros((n, 7))
         object_pose[:, 6] = 1.0

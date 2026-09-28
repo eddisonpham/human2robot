@@ -5,18 +5,31 @@ import json
 import sys
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from human2robot.evaluation import benchmark, plot_cli, robustness
+from human2robot.evaluation.evaluate import build_single_env
+
+ALLEGRO_ENV_ID = "Human2Robot-AllegroPickup-v0"
 
 
-def _run_domain_randomized_eval(sac, env_id, **kwargs):
-    """Call domain_randomized_eval with a patched evaluate in place.
+class _RecordingPolicy:
+    """A policy that notes what the model looked like when it acted.
 
-    robustness imports evaluate lazily inside the function body, so the
-    monkeypatch has to target the defining module rather than this one.
+    `domain_randomized_eval` builds the environment it evaluates in, so the
+    policy is the only observer that runs while a condition is active. Recording
+    the mass it sees is therefore the direct way to prove a scale was really
+    applied rather than merely passed to a function that ignored it.
     """
-    return robustness.domain_randomized_eval(sac, env_id, **kwargs)
+
+    def __init__(self, env, masses: list[float]) -> None:
+        self._env = env
+        self._masses = masses
+
+    def act(self, obs, deterministic: bool = True):
+        self._masses.append(float(self._env.model.body_mass[0]))
+        return np.zeros(self._env.action_space.shape[0], dtype=np.float32)
 
 
 def _write_metrics(path: Path, steps=(0, 10, 20), value=-5.0) -> None:
@@ -30,39 +43,132 @@ def _write_metrics(path: Path, steps=(0, 10, 20), value=-5.0) -> None:
     )
 
 
-def test_domain_randomized_eval_averages_across_scales(monkeypatch) -> None:
-    calls = []
+def test_domain_randomization_scales_the_model_and_restores_it() -> None:
+    env = build_single_env(ALLEGRO_ENV_ID)
+    try:
+        model = env.model
+        nominal = model.body_mass.copy()
+        friction = model.geom_friction.copy()
+        damping = model.dof_damping.copy()
+        with robustness.domain_randomization(model, 0.5):
+            assert np.allclose(model.body_mass, nominal * 0.5)
+            assert np.allclose(model.geom_friction, friction * 0.5)
+            assert np.allclose(model.dof_damping, damping * 0.5)
+        assert np.allclose(model.body_mass, nominal)
+        assert np.allclose(model.geom_friction, friction)
+        assert np.allclose(model.dof_damping, damping)
+    finally:
+        env.close()
 
-    def fake_evaluate(sac, env_id, episodes, seed):
-        calls.append((env_id, episodes, seed))
-        return {"eval_return_mean": float(seed)}
 
+def test_domain_randomization_restores_after_an_exception() -> None:
+    """A failed condition must not leave the perturbation behind.
+
+    Without this the next condition is evaluated against the previous one's
+    physics, turning a sweep into an ordering effect that looks like a trend.
+    """
+    env = build_single_env(ALLEGRO_ENV_ID)
+    try:
+        model = env.model
+        nominal = model.body_mass.copy()
+        with (
+            pytest.raises(RuntimeError, match="boom"),
+            robustness.domain_randomization(model, 2.0),
+        ):
+            raise RuntimeError("boom")
+        assert np.allclose(model.body_mass, nominal)
+    finally:
+        env.close()
+
+
+def test_domain_randomization_rejects_a_bad_scale() -> None:
+    env = build_single_env(ALLEGRO_ENV_ID)
+    try:
+        with (
+            pytest.raises(ValueError, match="must be positive"),
+            robustness.domain_randomization(env.model, 0.0),
+        ):
+            pass
+    finally:
+        env.close()
+
+
+def test_domain_randomization_rejects_a_black_box_model() -> None:
+    with (
+        pytest.raises(AttributeError, match="not a MuJoCo model"),
+        robustness.domain_randomization(object(), 1.1),
+    ):
+        pass
+
+
+def test_domain_randomized_eval_perturbs_the_model_per_scale(monkeypatch) -> None:
+    """Each condition must really see a different model.
+
+    The previous implementation looped over scales and re-evaluated the same
+    unmodified environment, so every condition returned an identical number and
+    the sweep measured nothing. Grouping the observed mass by condition and
+    asserting the groups are the nominal mass times their own scale is the
+    property that would have caught it.
+    """
+    env = build_single_env(ALLEGRO_ENV_ID)
     evaluate_module = importlib.import_module("human2robot.evaluation.evaluate")
+    monkeypatch.setattr(evaluate_module, "build_single_env", lambda env_id: env)
 
-    monkeypatch.setattr(evaluate_module, "evaluate", fake_evaluate)
-    result = _run_domain_randomized_eval(
-        object(), "Pendulum-v1", episodes=3, seed=0, scales=(0.8, 1.0)
+    masses: list[float] = []
+    nominal = float(env.model.body_mass[0])
+    scales = (0.8, 1.0, 1.2)
+    result = robustness.domain_randomized_eval(
+        _RecordingPolicy(env, masses),
+        ALLEGRO_ENV_ID,
+        episodes=1,
+        seed=0,
+        scales=scales,
     )
-    assert set(result) == {"robustness_mean", "scale_0.8", "scale_1.0"}
-    assert result["scale_0.8"] == 8.0
-    assert result["scale_1.0"] == 10.0
-    assert result["robustness_mean"] == pytest.approx(9.0)
-    assert calls[0] == ("Pendulum-v1", 3, 8)
+
+    assert set(result) == {
+        "robustness_mean",
+        "robustness_spread",
+        "scale_0.8",
+        "scale_1.0",
+        "scale_1.2",
+    }
+    # The model is observed on every policy call, and conditions need not last
+    # the same number of steps, so the property is the set of states visited
+    # rather than how many times each was reached.
+    assert masses, "the policy never ran, so nothing was observed"
+    assert {round(v, 9) for v in masses} == {round(nominal * s, 9) for s in scales}
 
 
 def test_domain_randomized_eval_uses_default_scales(monkeypatch) -> None:
+    env = build_single_env(ALLEGRO_ENV_ID)
     evaluate_module = importlib.import_module("human2robot.evaluation.evaluate")
+    monkeypatch.setattr(evaluate_module, "build_single_env", lambda env_id: env)
 
-    seen = []
+    masses: list[float] = []
+    result = robustness.domain_randomized_eval(
+        _RecordingPolicy(env, masses), ALLEGRO_ENV_ID, episodes=1
+    )
+    assert masses, "the policy never ran, so nothing was observed"
+    assert robustness.DEFAULT_SCALES == (0.8, 1.0, 1.2)
+    assert {k for k in result if k.startswith("scale_")} == {
+        "scale_0.8",
+        "scale_1.0",
+        "scale_1.2",
+    }
+    assert result["robustness_mean"] == pytest.approx(
+        np.mean([result[f"scale_{s:.1f}"] for s in robustness.DEFAULT_SCALES])
+    )
 
-    def fake_evaluate(sac, env_id, episodes, seed):
-        seen.append(seed)
-        return {"eval_return_mean": 1.0}
 
-    monkeypatch.setattr(evaluate_module, "evaluate", fake_evaluate)
-    result = _run_domain_randomized_eval(object(), "Pendulum-v1", episodes=1)
-    assert seen == [8, 10, 12]
-    assert result["robustness_mean"] == pytest.approx(1.0)
+def test_domain_randomized_eval_rejects_a_black_box_env() -> None:
+    """There is nothing to perturb, so there is no honest number to return."""
+    with pytest.raises(ValueError, match="no MuJoCo model"):
+        robustness.domain_randomized_eval(object(), "Pendulum-v1", episodes=1)
+
+
+def test_domain_randomized_eval_rejects_empty_scales() -> None:
+    with pytest.raises(ValueError, match="non-empty"):
+        robustness.domain_randomized_eval(object(), ALLEGRO_ENV_ID, scales=())
 
 
 def test_generalization_split_counts_unique_ids() -> None:

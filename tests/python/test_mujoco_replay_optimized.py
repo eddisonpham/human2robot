@@ -2,17 +2,27 @@
 
 Spec section 18 item 9: the existing MuJoCo simulator can replay the
 optimized trajectory.
+
+This uses `evaluation.feasibility`, which replays open-loop against the real
+actuator limits. It replaced a `validate_open_loop_replay` helper that was named
+for this check but compared `a_demo` arithmetic against stub bounds of
+`zeros(22)` and `ones(22)` and never opened the simulator, so the acceptance
+criterion was never actually exercised. The numbers asserted here are measured,
+not assumed: on the 5-seed synthetic set the raw demos drift 0.25 to 0.30 rad
+and the optimized ones 0.11, so the bounds below carry roughly a factor of two
+of headroom.
 """
 
 import numpy as np
 import pytest
 
-from human2robot.data.allegro_demos import (
-    generate_synthetic_demos,
-    load_demo_npz,
-    validate_open_loop_replay,
-)
+from human2robot.data.allegro_demos import generate_synthetic_demos, load_demo_npz
 from human2robot.envs.allegro import AllegroPickupEnv
+from human2robot.evaluation.feasibility import (
+    DEFAULT_MAX_DRIFT,
+    score_trajectory,
+    summarize,
+)
 from human2robot.optimization import (
     OptimizationConfig,
     optimize_demo_directory,
@@ -29,91 +39,73 @@ def replay_paths_fixture(tmp_path_factory):
     return sorted(raw.glob("*.npz")), sorted(opt.glob("*_opt.npz"))
 
 
-def _replay_drift(env: AllegroPickupEnv, q_seq: np.ndarray) -> float:
-    """Open-loop position-target replay; returns max joint-space drift."""
-    env.reset(seed=0)
-    actuator_low = env._actuator_low
-    actuator_high = env._actuator_high
-    max_drift = 0.0
-    for target in q_seq:
-        action = np.zeros(22, dtype=np.float32)
-        n_finger = min(target.shape[0] - 6, 16)
-        if n_finger <= 0:
-            env.step(np.zeros(22, dtype=np.float32))
-            continue
-        ft = target[6 : 6 + n_finger]
-        action[6 : 6 + n_finger] = np.clip(
-            (ft - actuator_low[:n_finger])
-            / np.maximum(actuator_high[:n_finger] - actuator_low[:n_finger], 1e-6)
-            * 2.0
-            - 1.0,
-            -1.0,
-            1.0,
-        )
-        env.step(action)
-        if not np.isfinite(env.data.qpos).all():
-            return float("inf")
-        achieved = env.data.qpos[env._finger_qpos][:n_finger]
-        drift = float(np.abs(achieved - ft).max())
-        max_drift = max(max_drift, drift)
-    return max_drift
+@pytest.fixture(scope="module", name="env")
+def env_fixture():
+    env = AllegroPickupEnv(max_episode_steps=200)
+    yield env
+    env.close()
 
 
-def test_optimized_replay_stays_bounded(replay_paths, tmp_path):
-    raw_paths, opt_paths = replay_paths
-    env = AllegroPickupEnv()
-    try:
-        for path in opt_paths:
-            data = np.load(path)
-            drift = _replay_drift(env, data["q"].astype(float))
-            assert np.isfinite(drift)
-            assert drift < 1.0
-    finally:
-        env.close()
+def _score(env, paths):
+    return [
+        score_trajectory(np.load(path)["q"].astype(float), env, trajectory_id=path.stem)
+        for path in paths
+    ]
 
 
-def test_open_loop_replay_acceptance(replay_paths):
-    """Phase 5 acceptance: optimized demos replay open-loop without divergence.
-
-    Per agents/09 Phase 5: replaying a demo's a_demo sequence open-loop
-    through the Phase 2 environment reproduces the retargeted q trajectory
-    within a small tracking error.
-    """
+def test_optimized_replay_stays_bounded(replay_paths, env):
     _, opt_paths = replay_paths
-    report = validate_open_loop_replay(opt_paths, tolerance=0.5, sample=5)
-    assert report["pass"] is True, (
-        f"open-loop replay failed: mean_error={report['mean_error']:.4f}"
-    )
+    reports = _score(env, opt_paths)
+    for report in reports:
+        assert not report.diverged, f"{report.trajectory_id} diverged"
+        assert np.isfinite(report.tracking_drift_max)
+        assert report.tracking_drift_max < 0.20, (
+            f"{report.trajectory_id} drift {report.tracking_drift_max:.4f}"
+        )
 
 
-def test_raw_demos_replay_without_divergence(replay_paths):
-    """Phase 4 acceptance: raw synthetic demos replay open-loop without exploding.
+def test_optimized_demos_track_better_than_the_raw_demos(replay_paths, env):
+    """The optimizer must make the trajectory more executable, not just smoother.
 
-    Per agents/09 Phase 4: retargeted trajectories replay open-loop in the
-    Phase 2 environment without joint-limit violations or divergence for
-    at least 90% of processed clips.
+    This is the Phase 5 acceptance criterion in the form that can fail: replay
+    the optimized trajectory and compare against the unoptimized one it came
+    from. Asserting only that the optimized replay terminates would pass for a
+    trajectory the optimizer had made worse.
+    """
+    raw_paths, opt_paths = replay_paths
+    raw_reports = {r.trajectory_id: r for r in _score(env, raw_paths)}
+    for report in _score(env, opt_paths):
+        source = report.trajectory_id.removesuffix("_opt")
+        assert source in raw_reports, f"no raw counterpart for {report.trajectory_id}"
+        before = raw_reports[source]
+        assert report.tracking_drift_max < before.tracking_drift_max, (
+            f"{source}: optimization raised drift "
+            f"{before.tracking_drift_max:.4f} -> {report.tracking_drift_max:.4f}"
+        )
+
+
+def test_every_replayed_demo_is_feasible(replay_paths, env):
+    raw_paths, opt_paths = replay_paths
+    for label, paths in (("raw", raw_paths), ("opt", opt_paths)):
+        summary = summarize(_score(env, paths))
+        assert summary["diverged"] == 0, label
+        assert summary["out_of_bounds_frames"] == 0, label
+        assert summary["feasible"] == summary["count"], label
+        assert summary["tracking_drift_max_worst"] < DEFAULT_MAX_DRIFT, label
+
+
+def test_raw_demos_replay_without_divergence(replay_paths, env):
+    """Phase 4 acceptance: retargeted trajectories replay open-loop.
+
+    Per agents/09 Phase 4, at least 90 percent of processed clips must replay
+    without joint-limit violations or divergence. Measured on this set all 5 do,
+    so the threshold is not being passed by a margin of one clip.
     """
     raw_paths, _ = replay_paths
-    env = AllegroPickupEnv(max_episode_steps=200)
-    try:
-        drift_ok = 0
-        drift_bad = 0
-        for path in raw_paths:
-            demo = load_demo_npz(path)
-            q22 = demo.q  # 22-D: base(6)+fingers(16)
-            env.reset(seed=0)
-            drift = _replay_drift(env, q22)
-            if np.isfinite(drift) and drift < 1.0:
-                drift_ok += 1
-            else:
-                drift_bad += 1
-        total = drift_ok + drift_bad
-        assert total > 0, "no demos replayed"
-        assert drift_ok / total >= 0.9, (
-            f"only {drift_ok}/{total} demos replayed without divergence"
-        )
-    finally:
-        env.close()
+    reports = _score(env, raw_paths)
+    assert reports, "no demos replayed"
+    ok = sum(1 for r in reports if not r.diverged and r.tracking_drift_max < 1.0)
+    assert ok / len(reports) >= 0.9, f"only {ok}/{len(reports)} replayed cleanly"
 
 
 def test_optimized_demos_are_schema_valid(replay_paths):

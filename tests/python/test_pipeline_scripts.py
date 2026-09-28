@@ -184,7 +184,7 @@ def test_bc_optimized_beats_raw_end_to_end(bc_script, tmp_path, monkeypatch):
 def test_compare_aggregate_reports_mean_std_max(compare_script):
     keys = ("max_velocity", "max_acceleration", "max_jerk", "smoothness")
     rows = [{k: float(i + 1) for k in keys} for i in range(3)]
-    agg = compare_script.aggregate(rows)
+    agg = compare_script.aggregate_metrics(rows)
     assert set(agg) == set(keys)
     for k in keys:
         assert agg[k]["mean"] == pytest.approx(2.0)
@@ -208,19 +208,34 @@ def test_compare_reductions_are_positive_when_optimizer_helps(compare_script):
     assert out["smoothness_reduction_pct"] == pytest.approx(50.0)
 
 
-def test_compare_reductions_survive_zero_raw(compare_script):
-    """The max(raw, 1e-12) guard avoids a division by zero.
+def test_compare_reductions_reject_a_zero_baseline(compare_script):
+    """A zero baseline must not be reported as a full improvement.
 
-    It reports a full 100 percent reduction when the raw mean is exactly zero,
-    which is nonsense as a measurement but is the documented guard behaviour.
+    The previous guard divided by `max(raw, 1e-12)`, so an unchanging metric
+    (0.0 before, 0.0 after) was written into the report as a 100 percent
+    reduction. That number reached the published tables. There is no honest
+    percentage here: a metric that starts at zero has no headroom to measure a
+    reduction against, so the correct behaviour is to refuse rather than to
+    invent one. Real data does not hit this, because a mean of exactly 0.0 for
+    max velocity or max jerk means the whole set is degenerate.
     """
     keys = ("max_velocity", "max_acceleration", "max_jerk", "smoothness")
     report = {
         "raw": {k: {"mean": 0.0, "std": 0.0, "max": 0.0} for k in keys},
         "optimized": {k: {"mean": 0.0, "std": 0.0, "max": 0.0} for k in keys},
     }
-    out = compare_script.reductions(report)
-    assert out["max_jerk_reduction_pct"] == pytest.approx(100.0)
+    with pytest.raises(ValueError, match="non-positive baseline"):
+        compare_script.reductions(report)
+
+
+def test_compare_reductions_reject_a_negative_baseline(compare_script):
+    keys = ("max_velocity", "max_acceleration", "max_jerk", "smoothness")
+    report = {
+        "raw": {k: {"mean": -1.0, "std": 0.0, "max": -1.0} for k in keys},
+        "optimized": {k: {"mean": 0.0, "std": 0.0, "max": 0.0} for k in keys},
+    }
+    with pytest.raises(ValueError, match="non-positive baseline"):
+        compare_script.reductions(report)
 
 
 def test_compare_written_demo_is_schema_valid(compare_script, tmp_path):
