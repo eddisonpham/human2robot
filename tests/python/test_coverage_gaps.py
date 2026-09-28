@@ -450,6 +450,211 @@ def test_the_residual_model_accepts_an_unbatched_control():
         env.close()
 
 
+# --- joint layout ----------------------------------------------------------
+
+
+def test_shape_conversions_reject_the_wrong_width():
+    """Every (T, 16) helper refuses anything that is not (T, 16).
+
+    A 15-wide or 17-wide array would be indexed silently and put a finger value
+    in the wrong slot, which is the joint-ordering defect this layout exists to
+    prevent.
+    """
+    from human2robot.data import limits
+
+    for bad in (np.zeros((4, 15)), np.zeros((4, 17)), np.zeros(16)):
+        with pytest.raises(ValueError):
+            limits.fingers_from_dexretarget(bad)
+        with pytest.raises(ValueError):
+            limits.normalized_targets_to_finger_angles(bad)
+        with pytest.raises(ValueError):
+            limits.to_q22(bad)
+
+
+def test_normalized_targets_map_onto_the_actuator_range():
+    """-1 and +1 land exactly on the lower and upper actuator bounds.
+
+    The mapping is centre-plus-scaled-span, so the ends have to be exact or a
+    target of 1.0 produces a demand outside the range the simulator accepts.
+    """
+    from human2robot.data import limits
+
+    low, high = limits.finger_bounds()
+    lo = limits.normalized_targets_to_finger_angles(-np.ones((1, 16)))
+    hi = limits.normalized_targets_to_finger_angles(np.ones((1, 16)))
+    assert np.allclose(lo[0], low)
+    assert np.allclose(hi[0], high)
+    mid = limits.normalized_targets_to_finger_angles(np.zeros((1, 16)))
+    assert np.allclose(mid[0], 0.5 * (low + high))
+
+    # Values beyond the normalized range are clipped, not extrapolated.
+    assert np.allclose(
+        limits.normalized_targets_to_finger_angles(np.full((1, 16), 5.0)), hi
+    )
+
+
+def test_to_q22_embeds_fingers_after_a_zero_base():
+    """The 22-DoF configuration is six pinned base coordinates then 16 fingers."""
+    from human2robot.data import limits
+
+    fingers = np.arange(16, dtype=float).reshape(1, 16)
+    q = limits.to_q22(fingers)
+    assert q.shape == (1, 22)
+    assert np.all(q[0, :6] == 0.0)
+    assert np.array_equal(q[0, 6:], fingers[0])
+
+
+def test_clamping_lands_inside_the_model_bounds():
+    """An out-of-range trajectory is projected onto the actuator bounds.
+
+    Both ends are checked, because the thumb's lower bound is positive and a
+    one-sided test would miss a value driven below it.
+    """
+    from human2robot.data import limits
+
+    low, high = limits.finger_bounds()
+    clamped = limits.clamp_finger_angles(np.full((2, 16), -99.0))
+    assert np.allclose(clamped, np.broadcast_to(low, (2, 16)))
+    assert np.all(clamped >= low - 1e-12)
+
+    clamped = limits.clamp_finger_angles(np.full((2, 16), 99.0))
+    assert np.all(clamped <= high + 1e-12)
+
+
+# --- optimization pipeline -------------------------------------------------
+
+
+def _write_demo(path, length: int = 12) -> None:
+    from human2robot.data.schema import DEMO_SCHEMA_VERSION, DemoTrajectory
+
+    t = np.linspace(0, 1, length)
+    q = np.zeros((length, 22), dtype=np.float32)
+    q[:, 6:] = (0.3 * t)[:, None] * np.linspace(0.1, 0.5, 16)[None, :]
+    traj = DemoTrajectory(
+        q=q,
+        qdot=np.zeros((length, 22), dtype=np.float32),
+        a_demo=np.zeros((length, 22), dtype=np.float32),
+        object_pose=np.zeros((length, 7), dtype=np.float32),
+        object_vel=np.zeros((length, 6), dtype=np.float32),
+        contact=np.zeros((length, 5), dtype=np.float32),
+        trajectory_id=path.stem,
+        task_id="allegro_pickup",
+        source="unit-test",
+    )
+    traj.validate()
+    np.savez_compressed(
+        path,
+        q=traj.q,
+        qdot=traj.qdot,
+        a_demo=traj.a_demo,
+        object_pose=traj.object_pose,
+        object_vel=traj.object_vel,
+        contact=traj.contact,
+        trajectory_id=traj.trajectory_id,
+        task_id=traj.task_id,
+        source=traj.source,
+        schema_version=np.array(DEMO_SCHEMA_VERSION),
+    )
+
+
+def test_optimizing_a_file_writes_beside_the_input_by_default(tmp_path):
+    """No output path means `<stem>_opt.npz` next to the source.
+
+    The default is what makes a one-off call work, and it is the branch a
+    caller hits by omitting the argument rather than by passing one.
+    """
+    from human2robot.optimization.pipeline import (
+        OptimizationConfig,
+        optimize_demo_file,
+    )
+
+    source = tmp_path / "demo.npz"
+    _write_demo(source)
+    metrics = optimize_demo_file(source, config=OptimizationConfig())
+    expected = tmp_path / "demo_opt.npz"
+    assert expected.exists()
+    assert "final_cost" in metrics
+    assert load_demo_npz(expected).trajectory_id == "demo_opt"
+
+
+def test_optimizing_a_directory_builds_its_own_config(tmp_path):
+    """Omitting the config must still produce a valid run, not a None error."""
+    from human2robot.optimization.pipeline import optimize_demo_directory
+
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    _write_demo(raw / "a.npz")
+    _write_demo(raw / "b.npz")
+    manifest = optimize_demo_directory(raw, tmp_path / "out")
+    assert manifest["count"] == 2
+    assert set(manifest["per_file"]) == {"a.npz", "b.npz"}
+    assert manifest["config"]["dt"] > 0.0
+    assert (tmp_path / "out" / "a_opt.npz").exists()
+    assert (tmp_path / "out" / "optimization_manifest.json").exists()
+
+
+def test_optimizing_an_empty_directory_is_reported(tmp_path):
+    """An empty input directory must raise rather than write a empty report."""
+    from human2robot.optimization.pipeline import optimize_demo_directory
+
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    with pytest.raises(FileNotFoundError, match="no NPZ demos"):
+        optimize_demo_directory(empty, tmp_path / "out")
+
+
+# --- feasibility divergence ------------------------------------------------
+
+
+class _DivergingEnv:
+    """An environment whose state goes non-finite partway through a replay.
+
+    Stand-in for a simulator that blows up under a commanded trajectory. It
+    exposes only what `score_trajectory` touches, and it is the natural way to
+    test the divergence check because provoking a real divergence would need a
+    model that is genuinely unstable.
+    """
+
+    def __init__(self, fail_after: int) -> None:
+        self._fail_after = fail_after
+        self._steps = 0
+        self._finger_qpos = np.arange(16)
+        self.data = type("Data", (), {})()
+        self.data.qpos = np.zeros(22)
+
+    def reset(self, seed=None):
+        self._steps = 0
+        self.data.qpos = np.zeros(22)
+        return np.zeros(4), {}
+
+    def step(self, action):
+        self._steps += 1
+        if self._steps > self._fail_after:
+            self.data.qpos = np.full(22, np.nan)
+        return np.zeros(4), 0.0, False, False, {}
+
+    def close(self) -> None:
+        pass
+
+
+def test_a_replay_that_diverges_is_reported_not_scored():
+    """Non-finite simulator state ends the replay and marks the run diverged.
+
+    Without the check the drift of the frames already recorded would be reported
+    as if the trajectory had been performed, which is the one thing this metric
+    exists to rule out.
+    """
+    from human2robot.data.limits import BASE_DOF, DOF
+    from human2robot.evaluation import feasibility as F
+
+    q = np.zeros((20, DOF))
+    q[:, BASE_DOF:] = 0.2
+    report = F.score_trajectory(q, _DivergingEnv(fail_after=5), trajectory_id="div")
+    assert report.diverged
+    assert not report.is_feasible
+    assert report.tracking_drift_max == float("inf")
+
+
 def test_smoothing_leaves_a_short_sequence_untouched():
     """Sequences shorter than the window are returned as given.
 

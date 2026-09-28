@@ -39,7 +39,7 @@ kept, so there is one definition of executable and it is a real one. See
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -93,9 +93,6 @@ class FeasibilityReport:
     diverged: bool
     is_feasible: bool
     out_of_bounds_frames: int = 0
-
-    def as_dict(self) -> dict[str, float | int | bool | str]:
-        return asdict(self)
 
 
 def _finger_target_action(targets: np.ndarray) -> np.ndarray:
