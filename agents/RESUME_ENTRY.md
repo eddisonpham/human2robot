@@ -30,9 +30,9 @@ pipeline**; the SAC ablation is a secondary validation and came back null.
   timestep with independent Gaussian noise, which raises jerk faster than the
   tracking pull lowers it, so the first candidate always tripped the abort guard
   and the search ended with exactly zero improvement. Adding a backtracking line
-  search and making the noise scale configurable took the descent rate from
-  24/100 to **94/100** real sequences with a median 16.8 percent cost reduction,
-  and the controlled imitation figure from 5 to 31 percent.
+  search and making the noise scale configurable took the descent rate to
+  **47/50 held out** with a median 18.0 percent cost reduction, and the
+  controlled imitation figure from 5 to 31 percent.
 - Coverage: 7 test files for this subsystem alone, including MuJoCo open-loop
   replay of the optimized demos (`test_mujoco_replay_optimized.py`).
 
@@ -42,15 +42,20 @@ pipeline**; the SAC ablation is a secondary validation and came back null.
   `max_velocity` is 2.0000000000000018 with standard deviation 4e-16, so the
   limit is binding and being clipped. The unbounded quantities (jerk,
   smoothness) are the honest wins.
-- The convergence figure was twice wrong. It first reported 85/100 real and
+- The convergence figure was wrong twice. It first reported 85/100 real and
   100/100 synthetic because it compared the final cost against the unprojected
   input, so projection alone satisfied the test. Correcting that exposed the
   search achieving **exactly zero improvement on 85 percent of sequences**. The
-  current rate is **94/100** real and **93/100** synthetic, with a median 16.8
-  percent cost reduction.
-- `noise_scale` and `step_size` were tuned on the same 100 sequences the
-  convergence rate is reported on, so **94/100 is a training-set figure** with
-  no held-out confirmation. Say so if asked.
+  current rate is **47/50 held out** with a median 18.0 percent cost reduction.
+- The held-out number comes from a real protocol
+  (`scripts/validate_optimizer_split.py`): sweep `step_size` on the first 50
+  sequences, select from that half alone, evaluate once on the last 50. Tuning
+  half 47/50 at 19.3 percent mean, held out 47/50 at 19.4 percent. If asked how
+  this was first done wrong, the answer is that the sweep originally ran on all
+  100 and the rate was reported on the same 100, which is choosing
+  hyperparameters on the evaluation set.
+- The held-out half is a split of one subject's sequences, not a second subject,
+  so it does not test cross-subject generalization.
 - The BC metric measures how *learnable* the optimized trajectories are, not
   task success.
 - The synthetic and real data sets disagree (56.8 percent versus 31.0 percent
@@ -92,8 +97,8 @@ reading code or checking a control rather than by watching a metric:
 5. The optimizer's convergence flag reported 85/100 because it compared against
    the unprojected input, counting projection as optimization. Correcting it
    exposed that the search achieved zero improvement on 85 percent of sequences;
-   removing the per-timestep noise took it to 94/100 with a median 16.8 percent
-   cost reduction.
+   removing the per-timestep noise took it to 47/50 held out with a median 18.0
+   percent cost reduction.
 
 An intermittent multi-hour training hang was traced with a native stack dump
 (`py-spy --native`) to leaked CUDA contexts wedging a synchronizing `.item()`

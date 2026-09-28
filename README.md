@@ -24,9 +24,9 @@ reading code or checking a control, never by watching a metric:
    counted as optimization. Fixing that exposed a worse problem: the search
    itself was achieving exactly zero improvement on 85 percent of sequences,
    because independent per-timestep noise is adversarial for a
-   smoothness-dominated cost. Removing it took the rate to 94/100 with a median
-   16.8 percent cost reduction, and the controlled real-data imitation figure
-   from 5.2 to 31 percent.
+   smoothness-dominated cost. Removing it took the held-out descent rate to
+   47/50 with a median 18.0 percent cost reduction, and the controlled
+   real-data imitation figure from 5.2 to 31 percent.
 
 Each is written up in [`docs/`](docs/), and each has a regression test.
 
@@ -159,8 +159,8 @@ Kinematic quality, measured on **100 real DexYCB sequences**:
 | max jerk | -41.9% | -50.6% |
 | smoothness cost | -64.7% | -93.7% |
 | max velocity | -57.2% | -65.4% |
-| search improved on its starting point | 94/100 | 93/100 |
-| median cost reduction achieved | 16.8% | 14.8% |
+| search improved on its starting point | 47/50 held out | 93/100 |
+| median cost reduction achieved | 18.0% held out | 14.8% |
 
 Imitation quality, measured on **100 real DexYCB sequences**. The middle row is a
 control that isolates the optimizer, because DexYCB captures at 30 Hz and the
@@ -183,12 +183,17 @@ reason is input roughness, which is untested.
 
 Caveats worth stating rather than hiding: optimized `max_velocity` is 2.0000000000000018
 with a standard deviation of 4e-16, so the velocity "gain" is constraint
-saturation rather than optimization headroom; the BC metric measures how
-learnable the trajectories are, not task success; and `noise_scale` and
-`step_size` were tuned on the same 100 sequences the convergence rate is
-reported on, so 94/100 is a training-set figure with no held-out confirmation.
-See [`docs/RESULTS.md`](docs/RESULTS.md) and
-`scripts/diagnose_convergence.py`. Artifacts are in
+saturation rather than optimization headroom; and the BC metric measures how
+learnable the trajectories are, not task success.
+
+The descent rate is quoted **held out**. `scripts/validate_optimizer_split.py`
+sweeps `step_size` on the first 50 sequences, selects from that half alone, then
+evaluates once on the last 50, which no selection decision has seen: 47/50
+improved, median 18.0 percent, with no meaningful gap against the tuning half.
+An earlier version of this table was swept and reported on the same 100
+sequences, which is choosing hyperparameters on the evaluation set; the 94/100
+it produced is not the number quoted above. See
+[`docs/RESULTS.md`](docs/RESULTS.md), `scripts/diagnose_convergence.py`, and
 `results/trajectory_optimization/`.
 
 #### The SAC ablation (null result)
@@ -383,13 +388,12 @@ residual model non-trivial and which is not yet implemented. See
 DexYCB subjects beyond subject-01. The ONNX exporter still uses the legacy
 TorchScript path, which PyTorch 2.9 will retire in favour of `torch.export`.
 
-**Known weaknesses.** The optimizer's hyperparameters were tuned on the same
-sequences its convergence rate is reported on, so 94/100 is a training-set
-figure. Its effect on mean imitation error is 31 percent on real data against
-57 percent on synthetic, and the reason for that gap is untested. Only
-DexYCB subject-01 is processed. The ONNX exporter still uses the legacy
-TorchScript path, which PyTorch 2.9 will retire in favour of `torch.export`.
-There is no CI, so the gate and the C++ suite are run by hand.
+**Known weaknesses.** The optimizer's effect on mean imitation error is 31
+percent on real data against 57 percent on synthetic, and the reason for that gap
+is untested. Only DexYCB subject-01 is processed, so the held-out half is a split
+of one subject's sequences rather than a different subject. The ONNX exporter
+still uses the legacy TorchScript path, which PyTorch 2.9 will retire in favour
+of `torch.export`. There is no CI, so the gate and the C++ suite are run by hand.
 
 ## Licenses
 

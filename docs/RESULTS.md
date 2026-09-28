@@ -34,8 +34,8 @@ period so both data sets are optimized under identical settings.
 | smoothness cost | -64.7% | -93.7% |
 | max velocity | -57.2% | -65.4% |
 | max acceleration | -27.6% | -30.3% |
-| search improved on its starting point | 94 / 100 | 93 / 100 |
-| median cost reduction achieved | 16.8% | 14.8% |
+| search improved on its starting point | 47 / 50 held out | 93 / 100 |
+| median cost reduction achieved | 18.0% held out | 14.8% |
 
 **Read the velocity row with suspicion.** Optimized `max_velocity` is
 2.0000000000000018 with a standard deviation of 4.4e-16 on both data sets, so
@@ -67,7 +67,9 @@ Two changes fixed it:
    the pipeline sets it to 0, making the step a pure tracking pull.
 
 Measured over all 100 sequences of each data set, varying only `noise_scale` and
-`step_size`:
+`step_size`. These rows are diagnostic: the `noise_scale` column is the
+structural finding, and the `step_size` rows within a column are the tuning
+sweep that the held-out protocol below re-runs properly.
 
 | noise_scale | step_size | real improved | synthetic improved |
 | --- | --- | --- | --- |
@@ -75,16 +77,37 @@ Measured over all 100 sequences of each data set, varying only `noise_scale` and
 | 0.01 | 0.2 | 30/100 | - |
 | 0.0 | 0.05 | 32/100 | - |
 | 0.0 | 0.2 | 75/100 | - |
-| **0.0** | **0.5** | **94/100** | **93/100** |
+| **0.0** | **0.5** | **47/50 held out** | **93/100** |
 
 The noise term was the whole problem. `step_size` 0.5 and 1.0 give identical
 results and 2.0 is slightly worse, so 0.5 is the plateau.
 
-**Caveat on how these were chosen.** Both hyperparameters were selected on the
-same 100 sequences the convergence figures are reported on. With only two
-parameters and an effect spanning 24 to 94, this is not fine-grained overfitting,
-but the 94/100 is a training-set number and no held-out set was used to confirm
-it. A reviewer is entitled to discount it for that reason.
+### Held-out validation, because the sweep was initially done wrong
+
+The first version of this table was selected by sweeping `step_size` while
+looking at all 100 sequences and then reporting the rate on those same 100. That
+is choosing hyperparameters on the evaluation set, and the resulting 94/100
+should be discounted.
+
+`scripts/validate_optimizer_split.py` fixes the protocol. The sweep runs on the
+first 50 sequences only; `step_size = 0.5` is selected from that half alone
+(it happens to be the same value, so the choice reproduces); and the setting is
+then evaluated once on the last 50, which no selection decision has seen.
+
+| | improved | mean cost reduction | median |
+| --- | --- | --- | --- |
+| tuning half (50) | 47/50 | 19.28% | 15.22% |
+| **held out (50)** | **47/50** | **19.38%** | **18.01%** |
+| synthetic (100) | 93/100 | 14.76% | 14.79% |
+
+There is no meaningful gap between the tuning and held-out halves, so the
+setting is not overfitted to the sequences it was chosen on. The rate quoted in
+this document is the **held-out 47/50**, not the 94/100 the contaminated
+protocol produced.
+
+`noise_scale = 0` is not a tuned parameter. It is a structural fix: independent
+per-timestep noise is provably adversarial for a smoothness-dominated cost, and
+the sweep over it in the table above is diagnostic rather than selective.
 
 ### The convergence metric was measuring projection, not optimization
 
@@ -249,6 +272,6 @@ the underlying source, never by watching a metric.
 
 The two figures that moved most in this project's history moved because
 something was fixed, not because something was reworded: the optimizer's search
-went from zero improvement on 85 percent of sequences to a median 16.8 percent
-cost reduction on 94 percent of them, and the controlled real-data imitation
-figure went from 5.2 to 31 percent as a direct consequence.
+went from zero improvement on 85 percent of sequences to a held-out 47/50 with a
+median 18.0 percent cost reduction, and the controlled real-data imitation figure
+went from 5.2 to 31 percent as a direct consequence.
