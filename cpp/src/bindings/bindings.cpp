@@ -88,11 +88,14 @@ PYBIND11_MODULE(h2r_cpp, m) {
         .def_readwrite("max_iterations", &OptimizerConfig::max_iterations)
         .def_readwrite("convergence_tolerance", &OptimizerConfig::convergence_tolerance)
         .def_readwrite("step_size", &OptimizerConfig::step_size)
+        .def_readwrite("noise_scale", &OptimizerConfig::noise_scale)
         .def_readwrite("seed", &OptimizerConfig::seed);
 
     py::class_<OptimizerResult>(m, "OptimizerResult")
         .def_readonly("trajectory", &OptimizerResult::trajectory)
         .def_readonly("initial_cost", &OptimizerResult::initial_cost)
+        .def_readonly("projected_initial_cost", &OptimizerResult::projected_initial_cost)
+        .def_readonly("improvement_pct", &OptimizerResult::improvement_pct)
         .def_readonly("final_cost", &OptimizerResult::final_cost)
         .def_readonly("iterations", &OptimizerResult::iterations)
         .def_readonly("converged", &OptimizerResult::converged);

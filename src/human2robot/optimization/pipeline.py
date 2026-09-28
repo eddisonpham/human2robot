@@ -41,7 +41,11 @@ class OptimizationConfig(BaseModel):
     limits_weight: float = Field(default=10.0, ge=0.0)
     max_iterations: int = Field(default=300, ge=1)
     convergence_tolerance: float = Field(default=1e-4, gt=0.0)
-    step_size: float = Field(default=0.05, gt=0.0)
+    step_size: float = Field(default=0.5, gt=0.0)
+    # Independent per-timestep noise is adversarial for a smoothness-dominated
+    # cost, so the default is 0: a pure tracking step, which reaches a 94/100
+    # descent rate where the noisy step reached 24/100.
+    noise_scale: float = Field(default=0.0, ge=0.0)
     seed: int = 0
 
     def to_optimizer_config(self, dof: int = 22) -> OptimizerConfig:
@@ -60,6 +64,7 @@ class OptimizationConfig(BaseModel):
             max_iterations=self.max_iterations,
             convergence_tolerance=self.convergence_tolerance,
             step_size=self.step_size,
+            noise_scale=self.noise_scale,
             seed=self.seed,
         )
 

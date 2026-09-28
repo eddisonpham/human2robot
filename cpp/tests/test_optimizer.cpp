@@ -122,6 +122,70 @@ TEST(Optimizer, FinalCostNeverExceedsProjectedBaseline) {
     EXPECT_LE(result.final_cost, cost_of(projected, initial) + 1e-9);
 }
 
+TEST(Optimizer, ImprovementIsZeroWithoutProgress) {
+    // improvement_pct is the honest measure of whether the search did anything.
+    // With max_iterations = 0 it must report exactly zero rather than a
+    // spurious improvement from projection alone.
+    OptimizerConfig config = base_config();
+    config.max_iterations = 0;
+    const TrajectoryOptimizer optimizer(config);
+    const Trajectory initial = overshooting_ramp(40, 2);
+    const OptimizerResult result = optimizer.optimize(initial, initial);
+    EXPECT_DOUBLE_EQ(result.improvement_pct, 0.0);
+    EXPECT_FALSE(result.converged);
+}
+
+TEST(Optimizer, NoiseScaleZeroRemovesSeedDependence) {
+    // With the per-timestep Gaussian noise switched off the search is a pure
+    // tracking step, so the result no longer depends on the seed. This is the
+    // property the pipeline relies on: it sets noise_scale = 0 because
+    // independent per-sample noise is adversarial for a smoothness-dominated
+    // cost, raising jerk faster than the tracking pull lowers it.
+    OptimizerConfig a = base_config();
+    a.noise_scale = 0.0;
+    a.step_size = 0.5;
+    a.seed = 1;
+    OptimizerConfig b = a;
+    b.seed = 999;
+
+    const TrajectoryOptimizer opt_a(a);
+    const TrajectoryOptimizer opt_b(b);
+    const Trajectory initial = overshooting_ramp(60, 2);
+    const OptimizerResult ra = opt_a.optimize(initial, initial);
+    const OptimizerResult rb = opt_b.optimize(initial, initial);
+    EXPECT_DOUBLE_EQ(ra.final_cost, rb.final_cost);
+    EXPECT_EQ(ra.iterations, rb.iterations);
+    EXPECT_EQ(ra.converged, rb.converged);
+}
+
+TEST(Optimizer, NoiseScaleAffectsResult) {
+    // Guard against noise_scale being plumbed through but ignored.
+    OptimizerConfig noisy = base_config();
+    noisy.noise_scale = 0.1;
+    noisy.seed = 3;
+    OptimizerConfig quiet = noisy;
+    quiet.noise_scale = 0.0;
+    const TrajectoryOptimizer noisy_optimizer(noisy);
+    const TrajectoryOptimizer quiet_optimizer(quiet);
+    const Trajectory initial = overshooting_ramp(60, 2);
+    const OptimizerResult rn = noisy_optimizer.optimize(initial, initial);
+    const OptimizerResult rq = quiet_optimizer.optimize(initial, initial);
+    EXPECT_NE(rn.final_cost, rq.final_cost);
+}
+
+TEST(Optimizer, BacktrackingFindsSmallerDescentStep) {
+    // A step that overshoots must be retried at a smaller size rather than
+    // aborting the whole search.
+    OptimizerConfig small = base_config();
+    small.step_size = 0.5;
+    small.noise_scale = 0.0;
+    const TrajectoryOptimizer optimizer(small);
+    const Trajectory initial = overshooting_ramp(50, 2);
+    const OptimizerResult result = optimizer.optimize(initial, initial);
+    EXPECT_LE(result.final_cost, result.projected_initial_cost + 1e-9);
+    EXPECT_GT(result.iterations, 0);
+}
+
 TEST(Optimizer, ConvergenceUsesProjectedBaseline) {
     // Regression test: convergence must be measured from the projected
     // starting point, the place the search actually begins. Measured against

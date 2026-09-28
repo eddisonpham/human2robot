@@ -26,7 +26,8 @@ def main() -> int:
         limits_weight=10.0,
         max_iterations=300,
         convergence_tolerance=1e-4,
-        step_size=0.05,
+        step_size=0.5,
+        noise_scale=0.0,
         seed=0,
     )
     started = time.perf_counter()

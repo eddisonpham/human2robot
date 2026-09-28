@@ -58,6 +58,7 @@ class OptimizerConfig:
         max_iterations: int = 300,
         convergence_tolerance: float = 1e-4,
         step_size: float = 0.05,
+        noise_scale: float = 0.1,
         seed: int = 0,
     ) -> None:
         self._config = _mod.OptimizerConfig()
@@ -74,6 +75,7 @@ class OptimizerConfig:
         self._config.max_iterations = max_iterations
         self._config.convergence_tolerance = convergence_tolerance
         self._config.step_size = step_size
+        self._config.noise_scale = noise_scale
         self._config.seed = seed
         self.dof = dof
 
@@ -88,6 +90,8 @@ class OptimizerResult:
     def __init__(self, raw) -> None:
         self.trajectory: np.ndarray = raw.trajectory.positions
         self.initial_cost: float = raw.initial_cost
+        self.projected_initial_cost: float = raw.projected_initial_cost
+        self.improvement_pct: float = raw.improvement_pct
         self.final_cost: float = raw.final_cost
         self.iterations: int = raw.iterations
         self.converged: bool = raw.converged

@@ -21,16 +21,20 @@ reading code or checking a control, never by watching a metric:
    out to be 64.7 points of resampling and 5.2 points of optimizer.
 5. The optimizer's convergence flag reported 85/100 real and 100/100 synthetic
    because it compared against the unprojected input, so projection alone
-   counted as optimization. Measured from the projected starting point it is
-   21/100 and 29/100.
+   counted as optimization. Fixing that exposed a worse problem: the search
+   itself was achieving exactly zero improvement on 85 percent of sequences,
+   because independent per-timestep noise is adversarial for a
+   smoothness-dominated cost. Removing it took the rate to 94/100 with a median
+   16.8 percent cost reduction, and the controlled real-data imitation figure
+   from 5.2 to 31 percent.
 
 Each is written up in [`docs/`](docs/), and each has a regression test.
 
 **What the pipeline does, on real data.** 100 DexYCB hand motion sequences are
 ingested, MANO poses retargeted to Allegro joints, and the result projected onto
 joint, velocity, and acceleration limits. On those sequences the optimizer cuts
-jerk 36 percent and smoothness cost 56 percent, and more than halves worst-case
-imitation error.
+jerk 42 percent and smoothness cost 65 percent, and cuts worst-case imitation
+error from 0.291 to 0.065.
 
 **The research question is adversarial on purpose:** do human demonstrations and
 physics priors actually help SAC learn to control a robot hand, or is the extra
@@ -152,10 +156,11 @@ Kinematic quality, measured on **100 real DexYCB sequences**:
 
 | Quantity | Real DexYCB | Synthetic |
 | --- | --- | --- |
-| max jerk | -35.5% | -44.2% |
-| smoothness cost | -56.3% | -93.0% |
+| max jerk | -41.9% | -50.6% |
+| smoothness cost | -64.7% | -93.7% |
 | max velocity | -57.2% | -65.4% |
-| search improved on its starting point | 21/100 | 29/100 |
+| search improved on its starting point | 94/100 | 93/100 |
+| median cost reduction achieved | 16.8% | 14.8% |
 
 Imitation quality, measured on **100 real DexYCB sequences**. The middle row is a
 control that isolates the optimizer, because DexYCB captures at 30 Hz and the
@@ -165,28 +170,24 @@ environment runs at 20 ms:
 | --- | --- | --- | --- |
 | raw (30 Hz) | 5.89e-4 | 0.291 | 6,146 |
 | resampled control (no optimizer) | 2.08e-4 | 0.180 | 10,280 |
-| optimized | **1.97e-4** | **0.082** | 10,280 |
+| optimized | **1.44e-4** | **0.065** | 10,280 |
 
-Comparing the first and last rows suggests a 66.5 percent gain. Almost all of it
-is resampling: 64.7 percent comes from resampling alone, and the optimizer adds
-**5.2 percent** on top. What the optimizer does deliver on real data is worst-case
-error, which more than halves (0.180 to 0.082).
+Comparing the first and last rows suggests a 75.6 percent gain. Most of that is
+resampling: 64.7 percent comes from resampling alone, and the optimizer adds
+**31 percent** on top. Worst-case error falls furthest, 0.291 to 0.065.
 
 On the **synthetic** set, where both arms are already at 20 ms so the comparison
-is clean, the optimizer cuts held-out error **51.6 percent** (MSE 7.08e-4 to
-3.43e-4, max error 0.120 to 0.069). The two data sets disagree, and the likely
+is clean, the optimizer cuts held-out error **56.8 percent** (MSE 7.08e-4 to
+3.06e-4, max error 0.120 to 0.065). The two data sets disagree, and the likely
 reason is input roughness, which is untested.
 
 Caveats worth stating rather than hiding: optimized `max_velocity` is 2.0000000000000018
-with a standard deviation of 4e-16, so velocity and acceleration "gains" are
-constraint saturation rather than optimization headroom; the BC metric measures
-how learnable the trajectories are, not task success; and the optimizer's search
-barely engages at all, improving on its own starting point for only 21 of 100
-real sequences, because its first stochastic step usually overshoots far enough
-to trip the abort guard. That last point was itself a bug: the convergence flag
-compared against the unprojected input rather than the projected starting point,
-so it counted projection as optimization. See
-[`docs/RESULTS.md`](docs/RESULTS.md) and
+with a standard deviation of 4e-16, so the velocity "gain" is constraint
+saturation rather than optimization headroom; the BC metric measures how
+learnable the trajectories are, not task success; and `noise_scale` and
+`step_size` were tuned on the same 100 sequences the convergence rate is
+reported on, so 94/100 is a training-set figure with no held-out confirmation.
+See [`docs/RESULTS.md`](docs/RESULTS.md) and
 `scripts/diagnose_convergence.py`. Artifacts are in
 `results/trajectory_optimization/`.
 
@@ -382,13 +383,13 @@ residual model non-trivial and which is not yet implemented. See
 DexYCB subjects beyond subject-01. The ONNX exporter still uses the legacy
 TorchScript path, which PyTorch 2.9 will retire in favour of `torch.export`.
 
-**Known weaknesses.** The optimizer's search barely engages: it improves on its
-own starting point for 21 of 100 real sequences and 29 of 100 synthetic ones,
-because the first stochastic step usually overshoots far enough to trip the
-abort guard. Tuning that, or replacing the abort rule with a line search, is the
-clearest outstanding work. The optimizer's effect on mean imitation error is
-5 percent on real data against 52 percent on synthetic, and the reason is
-untested.
+**Known weaknesses.** The optimizer's hyperparameters were tuned on the same
+sequences its convergence rate is reported on, so 94/100 is a training-set
+figure. Its effect on mean imitation error is 31 percent on real data against
+57 percent on synthetic, and the reason for that gap is untested. Only
+DexYCB subject-01 is processed. The ONNX exporter still uses the legacy
+TorchScript path, which PyTorch 2.9 will retire in favour of `torch.export`.
+There is no CI, so the gate and the C++ suite are run by hand.
 
 ## Licenses
 

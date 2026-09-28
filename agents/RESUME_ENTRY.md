@@ -16,34 +16,44 @@ pipeline**; the SAC ablation is a secondary validation and came back null.
   projection. **60 GoogleTest cases pass** (verified: 60/60 in 1.36s). Exposed to
   Python through pybind11 (`src/human2robot/cpp_bindings/`).
 - **Measured on real data** (`results/trajectory_optimization/`): optimizing the
-  100 real DexYCB trajectories cut jerk **35.5 percent** and the smoothness cost
-  **56.3 percent**. Worst-case imitation error more than halved (0.180 to 0.082).
-- **Measured downstream on the synthetic set**, where both arms are already at
-  the 20 ms control period: held-out behavior-cloning error fell **51.6 percent**
-  (MSE 7.08e-4 -> 3.43e-4, max error 0.120 -> 0.069) over 10,088 transitions.
-- **On real data the optimizer's effect on average imitation error is about 5
-  percent.** A naive raw-versus-optimized comparison suggests 66.5 percent, but
-  DexYCB captures at 30 Hz and the environment runs at 20 ms, so resampling to
-  the control rate accounts for 64.7 of those points. A resampled control arm
-  isolates the optimizer. Lead with the controlled number.
+  100 real DexYCB trajectories cut jerk **41.9 percent** and the smoothness cost
+  **64.7 percent**. Worst-case imitation error fell from 0.291 to **0.065**.
+- **Controlled downstream result on real data.** A resampled pre-optimization
+  control arm isolates the optimizer from the 30 Hz to 20 ms resampling, which
+  otherwise accounts for most of the apparent gain. Against that control the
+  optimizer cuts held-out behavior-cloning error **31 percent** (MSE 2.08e-4 to
+  1.44e-4). Naive raw-versus-optimized would claim 75.6 percent.
+- **On the synthetic set**, where both arms are already at 20 ms so the
+  comparison is clean, held-out error fell **56.8 percent** (MSE 7.08e-4 to
+  3.06e-4, max error 0.120 to 0.065) over 10,088 transitions.
+- **Fixed a search that was doing nothing.** The optimizer perturbed every
+  timestep with independent Gaussian noise, which raises jerk faster than the
+  tracking pull lowers it, so the first candidate always tripped the abort guard
+  and the search ended with exactly zero improvement. Adding a backtracking line
+  search and making the noise scale configurable took the descent rate from
+  24/100 to **94/100** real sequences with a median 16.8 percent cost reduction,
+  and the controlled imitation figure from 5 to 31 percent.
 - Coverage: 7 test files for this subsystem alone, including MuJoCo open-loop
   replay of the optimized demos (`test_mujoco_replay_optimized.py`).
 
 ### Caveats to state if probed
 
-- Velocity and acceleration "improvements" are mostly **constraint saturation**:
-  optimized `max_velocity` is 2.0000000000000018 with standard deviation 4e-16,
-  so the limit is binding and being clipped. The unbounded quantities (jerk,
+- Velocity "improvements" are mostly **constraint saturation**: optimized
+  `max_velocity` is 2.0000000000000018 with standard deviation 4e-16, so the
+  limit is binding and being clipped. The unbounded quantities (jerk,
   smoothness) are the honest wins.
-- **85 of 100** real sequences converge; the synthetic set converges 100/100.
-- The convergence flag itself was a bug: it compared the final cost against the
-  unprojected input rather than the projected starting point the search begins
-  from, so projection alone satisfied it. Corrected figures are **21/100** real
-  and **29/100** synthetic sequences improve on their starting point. The
-  kinematic and imitation numbers were unaffected and reproduce byte for byte.
+- The convergence figure was twice wrong. It first reported 85/100 real and
+  100/100 synthetic because it compared the final cost against the unprojected
+  input, so projection alone satisfied the test. Correcting that exposed the
+  search achieving **exactly zero improvement on 85 percent of sequences**. The
+  current rate is **94/100** real and **93/100** synthetic, with a median 16.8
+  percent cost reduction.
+- `noise_scale` and `step_size` were tuned on the same 100 sequences the
+  convergence rate is reported on, so **94/100 is a training-set figure** with
+  no held-out confirmation. Say so if asked.
 - The BC metric measures how *learnable* the optimized trajectories are, not
   task success.
-- The synthetic and real data sets disagree (51.6 percent versus 5.2 percent
+- The synthetic and real data sets disagree (56.8 percent versus 31.0 percent
   on mean error). If asked why, the honest answer is that input roughness is the
   likely cause and that it is untested.
 
@@ -80,8 +90,10 @@ reading code or checking a control rather than by watching a metric:
    points of resampling and 5.2 points of optimizer, once a matched control arm
    was added.
 5. The optimizer's convergence flag reported 85/100 because it compared against
-   the unprojected input, counting projection as optimization. Corrected, it is
-   21/100.
+   the unprojected input, counting projection as optimization. Correcting it
+   exposed that the search achieved zero improvement on 85 percent of sequences;
+   removing the per-timestep noise took it to 94/100 with a median 16.8 percent
+   cost reduction.
 
 An intermittent multi-hour training hang was traced with a native stack dump
 (`py-spy --native`) to leaked CUDA contexts wedging a synchronizing `.item()`
