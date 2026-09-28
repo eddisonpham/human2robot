@@ -13,7 +13,7 @@ pipeline**; the SAC ablation is a secondary validation and came back null.
   Hermite interpolation, finite differences, moving-window smoothing, projection
   onto joint/velocity/acceleration limits, weighted cost (tracking, velocity,
   acceleration, jerk, collision, limits), and a seeded stochastic optimizer with
-  projection. **57 GoogleTest cases pass** (verified: 57/57 in 1.45s). Exposed to
+  projection. **60 GoogleTest cases pass** (verified: 60/60 in 1.36s). Exposed to
   Python through pybind11 (`src/human2robot/cpp_bindings/`).
 - **Measured on real data** (`results/trajectory_optimization/`): optimizing the
   100 real DexYCB trajectories cut jerk **35.5 percent** and the smoothness cost
@@ -67,8 +67,8 @@ implemented.
 
 ## Secondary: experimental-rigor work worth mentioning
 
-Three conclusions in this project were **artifacts, not methods**, each found by
-reading code or checking ground truth rather than by watching a metric:
+Five conclusions in this project were **artifacts, not methods**, each found by
+reading code or checking a control rather than by watching a metric:
 
 1. A singular rotation conversion (division by `2*sin(angle)`) produced
    observations up to 6.35e8 and critic loss to 1.9e15. Fixing it removed the
@@ -76,6 +76,12 @@ reading code or checking ground truth rather than by watching a metric:
 2. The hand-written physics model disagreed with its simulator by a median 12.9
    per step, in a file with 13 percent test coverage.
 3. Resume-induced duplicate metric records silently corrupted 6 of 12 runs.
+4. A 66.5 percent imitation-error gain on real data turned out to be 64.7
+   points of resampling and 5.2 points of optimizer, once a matched control arm
+   was added.
+5. The optimizer's convergence flag reported 85/100 because it compared against
+   the unprojected input, counting projection as optimization. Corrected, it is
+   21/100.
 
 An intermittent multi-hour training hang was traced with a native stack dump
 (`py-spy --native`) to leaked CUDA contexts wedging a synchronizing `.item()`
@@ -96,8 +102,8 @@ the failures above.
 ## State
 
 - Python: `src/human2robot/` (renamed from dynhand; entry points `human2robot-*`,
-  env id `Human2Robot-AllegroPickup-v0`). 270 tests, 95.09 percent coverage.
-- Tests: 126 -> 270 Python cases; 57 C++ cases. Gate: `ruff check`,
-  `ruff format --check`, `pytest`.
+  env id `Human2Robot-AllegroPickup-v0`). 338 tests, 96.97 percent coverage.
+- Tests: 126 -> 338 Python cases; 57 -> 60 C++ cases. Gate: `ruff check`,
+  `ruff format --check`, `pytest`. There is no CI, so the gate is manual.
 - Not started: Rust inference server, real DexYCB subject-02+ beyond the current
   set, Shadow Hand stretch work.

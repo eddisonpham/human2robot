@@ -338,11 +338,11 @@ cannot be mistaken for the corrected results, and the bad-physics D/E runs in
    cannot separate conditions whose means differ by 2 points with standard
    deviations of 2-7. If the goal is to rank A, B, and C, the honest answer
    needs more seeds, not more conditions.
-6. **Coverage is fixed**: 95.09 percent, above the 90 percent gate, with 270
+6. **Coverage is fixed**: 96.97 percent, above the 90 percent gate, with 338
    tests passing. The gate had been failing at 85.62 percent. The gap was not
    mainly in the previously identified modules; `nominal_physics.py` at 13
    percent was the single largest hole and is where the physics bug was hiding.
-7. **Push**: not attempted. No remote access configured in this environment.
+7. **Push**: the branch is published at `github.com/eddisonpham/human2robot`.
 
 ## How to read this as a human
 

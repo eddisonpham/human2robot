@@ -315,7 +315,7 @@ version control.
 
 **Correctness is defended by tests, not by review.** 97 percent line coverage
 across 300+ Python tests, enforced at a 90 percent floor in `pyproject.toml`, plus
-57 GoogleTest cases on the C++ side.
+60 GoogleTest cases on the C++ side.
 
 **Invariants are pinned explicitly.** `tests/python/test_invariants.py` pins the
 conventions whose violations each silently corrupted results: the MuJoCo
@@ -361,7 +361,7 @@ cmake --build cpp/build && ctest --test-dir cpp/build --output-on-failure
 **Implemented.** The full conversion pipeline, end to end and scripted:
 DexYCB download, real MANO ingestion and retargeting onto the Allegro hand
 (`data/dexycb.py`, `python -m human2robot.data.dexycb`), a C++20 constrained
-trajectory optimizer with 57 GoogleTest cases (`cpp/`) and its pybind11 bridge,
+trajectory optimizer with 60 GoogleTest cases (`cpp/`) and its pybind11 bridge,
 and downstream imitation evaluation with a matched control arm. On 100 real
 DexYCB sequences the optimizer cuts jerk 36 percent and smoothness cost 56
 percent, and more than halves worst-case imitation error.

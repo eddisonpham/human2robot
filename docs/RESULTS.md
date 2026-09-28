@@ -18,8 +18,8 @@ result onto joint, velocity, and acceleration limits.
   targets, per-subject demo building.
 - `cpp/` (library `h2r_traj`): Hermite interpolation, finite differences,
   moving-window smoothing, projection onto joint/velocity/acceleration limits,
-  weighted cost, seeded stochastic optimizer with projection. **57 GoogleTest
-  cases, verified 57/57 passing in 1.45s.**
+  weighted cost, seeded stochastic optimizer with projection. **60 GoogleTest
+  cases, verified 60/60 passing in 1.36s.**
 - `src/human2robot/cpp_bindings/`: pybind11 bridge.
 
 ### 1a. Kinematic quality, on 100 real DexYCB sequences
