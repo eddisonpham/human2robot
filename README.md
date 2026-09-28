@@ -10,14 +10,16 @@ than the point of the project.
 **The deliverable is the conversion pipeline, and it is validated across
 subjects.** On 100 sequences from each of two DexYCB subjects, with every
 hyperparameter selected on subject-01 only, the optimizer improves **89 of 100
-sequences on subject-02**, which it has never seen, and cuts held-out imitation
-error by **26 percent** there against a matched control.
+sequences on subject-02**, which it has never seen, cuts jerk 37 percent and
+smoothness cost 58 percent there, and cuts worst-case imitation error by
+**38 to 44 percent** on every data set and under every holdout granularity.
 
 This is primarily an **engineering** project. The ML is the application; the
 substance is the pipeline, the correctness tooling, and the discipline that keeps
-measurements trustworthy. Five separate results in this repository turned out to
-be artifacts of the code rather than properties of the method, each caught by
-reading code or checking a control, never by watching a metric:
+measurements trustworthy. Six separate results in this repository turned out to
+be artifacts of the code or the measurement rather than properties of the
+method, each caught by reading code or checking a control, never by watching a
+metric:
 
 1. On real data, a 66.5 percent imitation-error "gain" from the optimizer turned
    out to be 64.7 points of resampling and 5.2 points of optimizer.
@@ -34,6 +36,12 @@ reading code or checking a control, never by watching a metric:
    from-scratch SAC by 48 percent" headline.
 5. The hand-written physics model disagreed with its simulator by a median 12.9
    per step, in a file with 13 percent test coverage.
+6. The headline mean-imitation-error gain holds out a random 10 percent of pooled
+   transitions, so each holdout transition sits one step from a training
+   transition. Holding out whole trajectories instead reduces the real-data
+   advantage to a noisy 17 to 21 percent that changes sign, and tail
+   extrapolation reverses it. The worst-case error reduction survives every
+   split.
 
 Each is written up in [`docs/`](docs/), and each has a regression test.
 
@@ -192,6 +200,20 @@ resampled control 1.63e-4, optimized 1.21e-4, max error 0.189 to 0.141 to 0.079.
 The same comparison gives 69.1 percent naive and **26.0 percent** controlled.
 Resampling accounts for 58.2 points of the naive figure on this subject.
 
+**The mean-error row is the part that does not survive scrutiny.** That split
+holds out a random 10 percent of pooled transitions, so a holdout transition
+sits one step from a training transition. Holding out whole *trajectories*
+instead, over 5 seeds, the controlled advantage on real data is +21 percent with
+a standard deviation of 18, which changes sign depending on the draw, and
+extrapolating the tail of every trajectory reverses it outright. On synthetic the
+advantage survives every split (56, 50, 40 percent), which points at input
+roughness as the cause. The optimization is removing the high-frequency content
+that made one-step-ahead prediction easy.
+
+**Worst-case error is the claim that holds everywhere**, at -38 to -63 percent
+across all three data sets and both the transition and trajectory splits. The
+published claim should be built on that, not on the mean.
+
 On the **synthetic** set, where both arms are already at 20 ms so the comparison
 is clean, the optimizer cuts held-out error **56.8 percent** (MSE 7.08e-4 to
 3.06e-4, max error 0.120 to 0.065). Real human motion is harder for the
@@ -339,7 +361,7 @@ version control.
 ## Engineering practices
 
 **Correctness is defended by tests, not by review.** 97 percent line coverage
-across 342 Python tests, enforced at a 90 percent floor in `pyproject.toml`, plus
+across 347 Python tests, enforced at a 90 percent floor in `pyproject.toml`, plus
 64 GoogleTest cases on the C++ side.
 
 **Invariants are pinned explicitly.** `tests/python/test_invariants.py` pins the
@@ -406,14 +428,17 @@ residual model non-trivial and which is not yet implemented. See
 **Not started.** The Rust inference server, the Shadow Hand stretch work, and
 the 8 remaining DexYCB subjects.
 
-**Known weaknesses.** The optimizer's effect on mean imitation error is 26 to 31
-percent on real human motion against 57 percent on synthetic, and the reason for
-that gap is untested. Two DexYCB subjects are validated, out of ten in the
-dataset, and both come from the same capture rig, so robustness to capture
-conditions is untested. The ONNX exporter still uses the legacy TorchScript
-path, which PyTorch 2.9 will retire in favour of `torch.export`. The RL half is
-a null result on an unsolved task. There is no CI, so the gate and the C++ suite
-are run by hand.
+**Known weaknesses.** The optimizer's effect on *mean* imitation error on real
+human motion is a positive but noisy 17 to 21 percent once whole trajectories
+are held out, and reverses sign under temporal extrapolation; the
+*worst-case* error reduction of 38 to 63 percent is the robust result. The
+synthetic advantage of 57 percent survives every holdout granularity while the
+real-data mean does not, so the real/synthetic gap is unexplained. Two DexYCB
+subjects are validated, out of ten in the dataset, and both come from the same
+capture rig, so robustness to capture conditions is untested. The ONNX exporter
+still uses the legacy TorchScript path, which PyTorch 2.9 will retire in favour
+of `torch.export`. The RL half is a null result on an unsolved task. There is no
+CI, so the gate and the C++ suite are run by hand.
 
 ## Licenses
 

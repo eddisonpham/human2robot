@@ -20,6 +20,8 @@ SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
 
 def _load(name: str):
     """Import a script by path, since scripts/ is not a package."""
+    if SCRIPTS not in sys.path:
+        sys.path.insert(0, str(SCRIPTS))
     spec = importlib.util.spec_from_file_location(name, SCRIPTS / f"{name}.py")
     module = importlib.util.module_from_spec(spec)
     sys.modules[name] = module
@@ -35,6 +37,11 @@ def bc_script_fixture():
 @pytest.fixture(scope="module", name="compare_script")
 def compare_script_fixture():
     return _load("compare_dexycb_synthetic")
+
+
+@pytest.fixture(scope="module", name="split_script")
+def split_script_fixture():
+    return _load("check_bc_split_granularity")
 
 
 def write_demo(path: Path, horizon: int = 30, dof: int = 22) -> None:
@@ -284,3 +291,49 @@ def test_compare_subjects_write_to_separate_outputs(compare_script, tmp_path):
     """Two subjects must not overwrite each other's report."""
     outs = {v[2] for v in compare_script.SUBJECT_SETS.values()}
     assert len(outs) == len(compare_script.SUBJECT_SETS)
+
+
+# --- check_bc_split_granularity ---------------------------------------------
+
+
+def _traj(n: int, dof: int = 22, seed: int = 0) -> np.ndarray:
+    rng = np.random.default_rng(seed)
+    return np.cumsum(rng.normal(0, 0.01, (n, dof)), axis=0).astype(np.float32)
+
+
+def test_transition_split_holds_out_a_disjoint_fraction(split_script):
+    trajs = [_traj(100, seed=i) for i in range(4)]
+    rng = np.random.default_rng(0)
+    (tr_o, tr_a), (ho_o, ho_a) = split_script.split_transition(trajs, rng)
+    assert len(tr_o) + len(ho_o) == 4 * 99
+    assert len(ho_o) == max(1, int(0.1 * 4 * 99))
+    assert tr_o.shape[1] == ho_o.shape[1] == 22
+
+
+def test_trajectory_split_holds_out_whole_trajectories(split_script):
+    """No trajectory may contribute to both train and holdout.
+
+    This is the property that distinguishes a trajectory split from the
+    published transition split, and it is what the mean-error claim is tested
+    against.
+    """
+    trajs = [_traj(100, seed=i) for i in range(10)]
+    rng = np.random.default_rng(0)
+    (_, _), (ho_o, ho_a) = split_script.split_trajectory(trajs, rng)
+    assert len(ho_o) == max(1, int(0.1 * 10)) * 99
+    assert ho_o.shape == ho_a.shape
+
+
+def test_prefix_split_excludes_the_tail_from_training(split_script):
+    trajs = [_traj(100, seed=i) for i in range(3)]
+    (_, _), (ho_o, _) = split_script.split_prefix(trajs, np.random.default_rng(0))
+    assert len(ho_o) == 3 * 9
+
+
+def test_split_script_rejects_an_unknown_demo_set(split_script, capsys):
+    assert split_script.main(["--set", "nope"]) == 1
+    assert "unknown demo set" in capsys.readouterr().err
+
+
+def test_split_granularity_covers_the_three_levels(split_script):
+    assert set(split_script.SPLITS) == {"transition", "trajectory", "prefix"}

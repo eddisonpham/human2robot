@@ -24,12 +24,18 @@ secondary consumer of the output and returned a null result.
   Within subject-01 the held-out half gives 47/50 at 18.0 percent. On
   subject-01 the optimizer also cuts jerk **41.9 percent** and smoothness cost
   **64.7 percent**.
-- **Controlled downstream result.** A resampled pre-optimization control arm
-  isolates the optimizer from the 30 Hz to 20 ms resampling, which otherwise
-  accounts for most of the apparent gain. Against that control it cuts held-out
-  behavior-cloning error **26.0 percent on subject-02** (MSE 1.63e-4 to 1.21e-4)
-  and **31.0 percent on subject-01**, with worst-case error on subject-01 falling
-  from 0.291 to 0.065. Naive raw-versus-optimized would claim 69 to 76 percent.
+- **Controlled downstream result, and what survives it.** A resampled
+  pre-optimization control arm isolates the optimizer from the 30 Hz to 20 ms
+  resampling, which otherwise accounts for most of the apparent gain; naive
+  raw-versus-optimized would claim 69 to 76 percent. Against that control the
+  optimizer cuts **worst-case behavior-cloning error by 38 to 63 percent on
+  every data set and under every holdout granularity**, which is the robust
+  result. The *mean*-error gain of 26 to 31 percent is the number that does not
+  survive scrutiny: it holds out a random 10 percent of pooled transitions, so
+  each holdout transition sits one step from a training transition. Holding out
+  whole trajectories instead, over 5 seeds, the real-data advantage falls to a
+  noisy 17 to 21 percent that changes sign, and tail extrapolation reverses it.
+  Quote the tail, not the mean.
 - **Fixed a search that was doing nothing.** The optimizer perturbed every
   timestep with independent Gaussian noise, which raises jerk faster than the
   tracking pull lowers it, so the first candidate always tripped the abort guard
@@ -69,9 +75,14 @@ secondary consumer of the output and returned a null result.
   capture conditions.
 - The BC metric measures how *learnable* the optimized trajectories are, not
   task success.
+- **The mean-imitation claim was wrong once already and the worst-case one is
+  what I would defend.** Holding out random transitions flatters it, as
+  described above. The likely mechanism is that optimization removes the
+  high-frequency content that made one-step-ahead prediction easy, which is also
+  why synthetic keeps its advantage under every split and real motion does not.
 - Real human motion is harder for the optimizer than synthetic demonstrations
-  (26-31 percent versus 57 percent on mean error). Input roughness is the likely
-  cause and it is untested.
+  (a noisy 17-21 percent versus 57 percent on mean error). Input roughness is
+  the likely cause and it is untested.
 
 ## Secondary: the RL ablation (a null result, reported as one)
 
@@ -97,7 +108,7 @@ project and belongs in one paragraph, not the lead.
 
 ## Secondary: experimental-rigor work worth mentioning
 
-Five conclusions in this project were **artifacts, not methods**, each found by
+Six conclusions in this project were **artifacts, not methods**, each found by
 reading code or checking a control rather than by watching a metric:
 
 1. A 66.5 percent imitation-error gain on real data turned out to be 64.7
@@ -113,7 +124,10 @@ reading code or checking a control rather than by watching a metric:
    Fixing it removed the earlier headline that demos beat from-scratch SAC by
    48 percent.
 5. The hand-written physics model disagreed with its simulator by a median 12.9
-   per step, in a file with 13 percent test coverage.Also: resume-induced duplicate metric records silently corrupted 6 of 12 runs,
+   per step, in a file with 13 percent test coverage.
+6. The mean-imitation-error gain held out random pooled transitions, so each
+   holdout item sat one step from a training item. Whole-trajectory holdout
+   dropped the real-data advantage to a noisy 17-21 percent that changes sign.Also: resume-induced duplicate metric records silently corrupted 6 of 12 runs,
 and an intermittent multi-hour training hang was traced with a native stack dump
 (`py-spy --native`) to leaked CUDA contexts wedging a synchronizing `.item()`
 call. Built: metrics-stream integrity auditing, lossless checkpoint/resume
@@ -133,8 +147,8 @@ caused the failures above.
 ## State
 
 - Python: `src/human2robot/` (renamed from dynhand; entry points `human2robot-*`,
-  env id `Human2Robot-AllegroPickup-v0`). 342 tests, 96.98 percent coverage.
-- Tests: 126 -> 342 Python cases; 57 -> 64 C++ cases. Gate: `ruff check`,
+  env id `Human2Robot-AllegroPickup-v0`). 347 tests, 96.98 percent coverage.
+- Tests: 126 -> 347 Python cases; 57 -> 64 C++ cases. Gate: `ruff check`,
   `ruff format --check`, `pytest`. There is no CI, so the gate is manual.
 - Not started: Rust inference server, the 8 remaining DexYCB subjects, Shadow
   Hand stretch work.

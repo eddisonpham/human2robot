@@ -210,6 +210,11 @@ synthetic. Before the optimizer fix described above, the controlled real-data
 figure was 5.2 percent; most of the improvement in this table comes from the
 search actually running rather than from any change in the comparison.
 
+**These mean-error figures are the ones that do not survive a harder holdout.**
+Section 1d shows they fall to a noisy 17-21 percent with whole trajectories held
+out and reverse sign under temporal extrapolation. The worst-case error column
+below does survive every split.
+
 Worst-case error falls furthest: 0.291 raw, 0.180 after resampling, 0.065 after
 optimizing, and 0.189 to 0.141 to 0.079 on subject-02. The optimized arm is the
 only one whose transitions respect the robot's joint constraints. Mean absolute
@@ -226,7 +231,55 @@ confounded comparison. It was only caught by adding the control arm. The
 controlled number was small, and it was only made meaningful by fixing the
 optimizer rather than by rewording the result.
 
-### 1d. Reproducing this
+### 1d. How much of the imitation result survives a harder holdout
+
+The BC comparison above holds out a random 10 percent of **pooled
+transitions**. Consecutive transitions of one trajectory are nearly identical,
+so a holdout transition sits one step away from a training transition. That
+makes the absolute error optimistic, and it is the split every published number
+in this document uses.
+
+`scripts/check_bc_split_granularity.py` re-runs the comparison at three
+granularities, 5 seeds each, reporting the controlled advantage over the
+resampled control arm:
+
+| Data set | random transitions | whole trajectories held out | tail of every trajectory |
+| --- | --- | --- | --- |
+| Subject-01 | +34.4% (sd 2.6) | +21.4% (sd 18.5) | -109% |
+| Subject-02 | +26.1% (sd 8.0) | +17.8% (sd 17.9) | -231% |
+| Synthetic | +56.1% (sd 0.5) | +50.4% (sd 1.0) | +40.3% |
+
+**The mean-MSE claim does not hold up on real data.** Holding out whole
+trajectories keeps the advantage positive on average but the per-seed spread
+runs from -7 to +44 percent, so it changes sign depending on the draw. On
+subject-01 that is a 5-seed mean of +21 percent with a standard deviation of 18,
+which is not a result you can put on a resume. Extrapolating the tail of every
+trajectory reverses the sign outright, and it reverses it on real data while
+staying positive on synthetic.
+
+The likely mechanism is that optimization removes exactly the high-frequency
+content that made a one-step-ahead prediction easy. On synthetic trajectories
+there is more of that content to remove, so the tail split still favours the
+optimized arm; on real motion the optimizer has already taken it, and what is
+left extrapolates worse. **This is untested**, and it is the same real/synthetic
+gap as the 26 against 57 percent, showing up in a second place.
+
+**Worst-case error is the claim that survives.** It holds under every split and
+on every data set:
+
+| Data set | random transitions | whole trajectories held out |
+| --- | --- | --- |
+| Subject-01 | -61.2% | -62.8% |
+| Subject-02 | -37.7% | -43.5% |
+| Synthetic | -44.5% | -50.7% |
+
+So the defensible statement is that optimization **removes the outliers**: the
+worst prediction error falls by 38 to 63 percent on every data set and under
+every split granularity, while the mean-error improvement on real human motion
+is a positive but noisy 17 to 21 percent rather than the 26 to 31 percent the
+transition split reports. Any resume claim should be built on the tail.
+
+### 1e. Reproducing this
 
 | Step | Command | Produces |
 | --- | --- | --- |
@@ -239,6 +292,7 @@ optimizer rather than by rewording the result.
 | 7 | `uv run python scripts/run_downstream_bc.py --set dexycb` | `bc_downstream_dexycb.json` (real, subject-01) |
 | 8 | `uv run python scripts/run_downstream_bc.py --set synthetic` | `bc_downstream.json` (synthetic) |
 | 9 | `uv run python scripts/validate_optimizer_split.py` | `optimizer_split.json`, the held-out protocol |
+| 10 | `uv run python scripts/check_bc_split_granularity.py` | `bc_split_granularity.json`, the split-robustness check |
 
 The chain is now complete and scripted end to end. The held-out subject repeats
 three of those steps:
@@ -296,24 +350,28 @@ The pipeline runs end to end on real human motion, from DexYCB download through
 retargeting and constrained optimization, and every step is a committed command.
 
 On kinematics the optimizer does real work on real data: on subject-01, jerk
-down 41.9 percent, smoothness cost down 64.7 percent, and worst-case imitation
-error cut from 0.291 to 0.065. It generalizes to a second subject it was never
-tuned on: 89 of 100 sequences improved, and worst-case error 0.189 to 0.079. On
-average imitation error, the controlled figure is 31 percent on subject-01 and
-26.0 percent on held-out subject-02, against 56.8 percent on synthetic
-demonstrations. Most of the naive 75.6 percent on real data is resampling
-rather than optimization, and the controlled comparison exists only because the
-control arm was added.
+down 41.9 percent, smoothness cost down 64.7 percent. It generalizes to a second
+subject it was never tuned on: 89 of 100 sequences improved, jerk down 37.1
+percent, smoothness down 57.8 percent.
+
+The imitation result is narrower than it first looks, and the honest version is
+about the tail rather than the mean. Worst-case error falls 38 to 63 percent on
+every data set and under every holdout granularity. The mean-error improvement
+on real motion is positive but noisy, 17 to 21 percent once whole trajectories
+are held out, and reverses under temporal extrapolation. Most of the naive 75.6
+percent on real data is resampling rather than optimization, and the controlled
+comparison exists only because the control arm was added.
 
 The ablation is a null result on an unsolved task.
 
-Five findings in this project have turned out to be artifacts rather than
+Six findings in this project have turned out to be artifacts rather than
 results, all of them plausible-looking numbers that a reviewer would have had
 no reason to question: BC-init's 48 percent advantage, residual augmentation's
 apparent weakness, Condition C's apparent promise, the 66.5 percent imitation
-gain that was mostly resampling, and the 85/100 convergence rate that was
-counting projection as optimization. Each was found by checking a control or
-the underlying source, never by watching a metric.
+gain that was mostly resampling, the 85/100 convergence rate that was
+counting projection as optimization, and the mean-imitation-error gain that
+survives only under a holdout that leaks adjacent transitions. Each was found by
+checking a control or the underlying source, never by watching a metric.
 
 The two figures that moved most in this project's history moved because
 something was fixed, not because something was reworded: the optimizer's search
