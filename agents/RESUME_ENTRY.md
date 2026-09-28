@@ -17,8 +17,7 @@ pipeline**; the SAC ablation is a secondary validation and came back null.
   Python through pybind11 (`src/human2robot/cpp_bindings/`).
 - **Measured on real data** (`results/trajectory_optimization/`): optimizing the
   100 real DexYCB trajectories cut jerk **35.5 percent** and the smoothness cost
-  **56.3 percent**, with 85 of 100 sequences converged. Worst-case imitation
-  error more than halved (0.180 to 0.082).
+  **56.3 percent**. Worst-case imitation error more than halved (0.180 to 0.082).
 - **Measured downstream on the synthetic set**, where both arms are already at
   the 20 ms control period: held-out behavior-cloning error fell **51.6 percent**
   (MSE 7.08e-4 -> 3.43e-4, max error 0.120 -> 0.069) over 10,088 transitions.
@@ -37,6 +36,11 @@ pipeline**; the SAC ablation is a secondary validation and came back null.
   so the limit is binding and being clipped. The unbounded quantities (jerk,
   smoothness) are the honest wins.
 - **85 of 100** real sequences converge; the synthetic set converges 100/100.
+- The convergence flag itself was a bug: it compared the final cost against the
+  unprojected input rather than the projected starting point the search begins
+  from, so projection alone satisfied it. Corrected figures are **21/100** real
+  and **29/100** synthetic sequences improve on their starting point. The
+  kinematic and imitation numbers were unaffected and reproduce byte for byte.
 - The BC metric measures how *learnable* the optimized trajectories are, not
   task success.
 - The synthetic and real data sets disagree (51.6 percent versus 5.2 percent

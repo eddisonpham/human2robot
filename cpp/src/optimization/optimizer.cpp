@@ -39,6 +39,7 @@ OptimizerResult TrajectoryOptimizer::optimize(const Trajectory& initial,
 
     Trajectory best = current;
     double best_cost = current_cost;
+    const double projected_initial_cost = current_cost;
 
     std::mt19937 gen(static_cast<unsigned>(config_.seed));
     std::normal_distribution<double> dist(0.0, 1.0);
@@ -89,7 +90,14 @@ OptimizerResult TrajectoryOptimizer::optimize(const Trajectory& initial,
 
     result.trajectory = best;
     result.final_cost = best_cost;
-    if (result.initial_cost - best_cost >= config_.convergence_tolerance) {
+    // Convergence is measured against the projected starting point, which is
+    // where the search actually begins. Comparing against the unprojected
+    // input is wrong whenever projection itself raises the cost, because the
+    // limit-violation penalty can exceed the smoothness the projection adds.
+    // Those sequences would then report final_cost above initial_cost and
+    // could never satisfy the tolerance, even though the optimizer improved on
+    // its own starting point and never took a non-descending step.
+    if (projected_initial_cost - best_cost >= config_.convergence_tolerance) {
         result.converged = true;
     }
     return result;

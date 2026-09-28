@@ -2,6 +2,7 @@
 
 #include <h2r/collision_checker.hpp>
 #include <h2r/constraints.hpp>
+#include <h2r/cost.hpp>
 #include <h2r/derivatives.hpp>
 #include <h2r/metrics.hpp>
 
@@ -67,6 +68,75 @@ TEST(Optimizer, ReducesCostOnNoisyInput) {
     const OptimizerResult result = optimizer.optimize(initial, reference);
     EXPECT_LT(result.final_cost, result.initial_cost);
     EXPECT_GT(result.iterations, 0);
+}
+
+namespace {
+
+// A smooth ramp that overshoots the upper joint limit. Projection flattens the
+// overshoot, which introduces a kink, and the resulting jerk cost exceeds the
+// small limit-violation penalty it removes. This is the regime behind the
+// non-convergence reports on real DexYCB sequences.
+Trajectory overshooting_ramp(int timesteps, int dof) {
+    Trajectory traj;
+    traj.dt = 0.02;
+    for (int i = 0; i < timesteps; ++i) {
+        const double u = static_cast<double>(i) /
+                         static_cast<double>(timesteps - 1);
+        traj.positions.push_back(
+            Eigen::VectorXd::Constant(dof, 0.9 + 0.2 * u));
+    }
+    return traj;
+}
+
+double cost_of(const Trajectory& traj, const Trajectory& reference) {
+    const OptimizerConfig config = base_config();
+    return compute_cost(traj, reference, config.weights, &config.limits,
+                        &config.max_velocity, &config.max_acceleration,
+                        nullptr, nullptr, config.scales);
+}
+
+}  // namespace
+
+TEST(Optimizer, ProjectionCanRaiseTotalCost) {
+    // Documents the precondition the convergence test depends on: for this
+    // input, the projected starting point is more expensive than the input.
+    const Trajectory initial = overshooting_ramp(40, 2);
+    const Trajectory projected =
+        project_all(initial, base_config().limits, base_config().max_velocity,
+                    base_config().max_acceleration);
+    EXPECT_GT(cost_of(projected, initial), cost_of(initial, initial));
+}
+
+TEST(Optimizer, FinalCostNeverExceedsProjectedBaseline) {
+    // The search only ever accepts a strictly cheaper candidate, so the result
+    // can never be worse than the projected trajectory it started from. This
+    // held even when convergence was measured against the unprojected input,
+    // where projection could raise the cost and make final_cost exceed
+    // initial_cost.
+    const TrajectoryOptimizer optimizer(base_config());
+    const Trajectory initial = overshooting_ramp(40, 2);
+    const Trajectory projected =
+        project_all(initial, base_config().limits, base_config().max_velocity,
+                    base_config().max_acceleration);
+    const OptimizerResult result = optimizer.optimize(initial, initial);
+    EXPECT_LE(result.final_cost, cost_of(projected, initial) + 1e-9);
+}
+
+TEST(Optimizer, ConvergenceUsesProjectedBaseline) {
+    // Regression test: convergence must be measured from the projected
+    // starting point, the place the search actually begins. Measured against
+    // the unprojected input, any input whose projection raises cost could never
+    // satisfy the tolerance and was reported non-convergent by construction.
+    const TrajectoryOptimizer optimizer(base_config());
+    const Trajectory initial = overshooting_ramp(40, 2);
+    const Trajectory projected =
+        project_all(initial, base_config().limits, base_config().max_velocity,
+                    base_config().max_acceleration);
+    const double baseline = cost_of(projected, initial);
+    const OptimizerResult result = optimizer.optimize(initial, initial);
+    const bool improved_enough =
+        baseline - result.final_cost >= base_config().convergence_tolerance;
+    EXPECT_EQ(result.converged, improved_enough);
 }
 
 TEST(Optimizer, OutputSatisfiesConstraints) {

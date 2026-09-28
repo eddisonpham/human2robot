@@ -30,11 +30,11 @@ period so both data sets are optimized under identical settings.
 
 | Quantity | Real DexYCB | Synthetic |
 | --- | --- | --- |
-| sequences converged | 85 / 100 | 100 / 100 |
 | max jerk | -35.5% | -44.2% |
 | smoothness cost | -56.3% | -93.0% |
 | max velocity | -57.2% | -65.4% |
 | max acceleration | -13.0% | -16.8% |
+| search improved on its starting point | 21 / 100 | 29 / 100 |
 
 **Read the velocity and acceleration rows with suspicion.** Optimized
 `max_velocity` is 2.0000000000000018 with a standard deviation of 4.4e-16 on
@@ -43,10 +43,50 @@ are binding and the optimizer is clipping to them, so those "reductions" measure
 constraint enforcement rather than optimization headroom. Jerk and smoothness are
 the unbounded quantities, so they are the honest wins here.
 
-**15 of 100 real sequences do not converge.** The synthetic set converges
-100/100, so something about real retargeted trajectories produces cases the
-optimizer cannot satisfy. That is unexplained and worth understanding before
-trusting the pipeline on new data.
+### The convergence metric was measuring projection, not optimization
+
+This section previously reported 85/100 real and 100/100 synthetic sequences
+converging, and drew the inference that the optimizer handled synthetic data
+perfectly and only struggled on real data. **That inference was wrong, and the
+metric was wrong with it.**
+
+`TrajectoryOptimizer::optimize` sets `initial_cost` on the **unprojected** input
+but returns `best_cost` from the **projected** starting point, where the search
+actually begins. The convergence test was
+`initial_cost - best_cost >= tolerance`. Whenever projection itself lowers the
+cost, which it does for any limit-violating input because the violation penalty
+is large, that inequality is satisfied before the optimizer has done anything.
+The old 85/100 was exactly the count of sequences where projection alone beat
+the raw input, and 100/100 synthetic was the same artifact.
+
+The search only ever accepts a strictly cheaper candidate, so it cannot diverge.
+The fix measures convergence from the projected baseline, the place the search
+begins. `ProjectionCanRaiseTotalCost` in `cpp/tests/test_optimizer.cpp` pins the
+case that makes the distinction matter: a smooth ramp overshooting the joint
+limit has an unprojected cost of 0.048 and a projected cost of 257, because
+clipping the overshoot introduces a kink whose jerk cost exceeds the small
+violation penalty it removes.
+
+Measured properly, with `scripts/diagnose_convergence.py`:
+
+- **21 of 100** real and **29 of 100** synthetic sequences improve on their
+  projected starting point at all.
+- **51 of the 79 real failures stop at iteration 1.** The first stochastic step
+  more than doubles the cost, the loop breaks on its `candidate_cost >
+  current_cost * 2.0` guard, and the search ends having done nothing.
+- Only 19 failures run the full 300 iterations.
+
+So the honest statement is not "real data is harder" but **the stochastic search
+is badly tuned for this cost landscape on both data sets**: the perturbation
+`step_size * 0.1 * noise` is large enough that the first step almost always
+overshoots, and the doubling guard then aborts. Fixing that means tuning the
+step size or replacing the abort rule with a backtracking line search. It is not
+done, and it is the clearest piece of outstanding work in the C++ subsystem.
+
+Every kinematic and imitation number in this document is unaffected. The
+optimizer's returned trajectory did not change, and re-running both experiments
+after the fix reproduced `real_vs_synthetic.json` and `bc_downstream_dexycb.json`
+byte for byte.
 
 ### 1b. Imitation quality, on the 100 synthetic sequences
 

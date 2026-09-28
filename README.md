@@ -19,6 +19,10 @@ reading code or checking a control, never by watching a metric:
 3. Condition C's apparent advantage was a single lucky seed.
 4. On real data, a 66.5 percent imitation-error "gain" from the optimizer turned
    out to be 64.7 points of resampling and 5.2 points of optimizer.
+5. The optimizer's convergence flag reported 85/100 real and 100/100 synthetic
+   because it compared against the unprojected input, so projection alone
+   counted as optimization. Measured from the projected starting point it is
+   21/100 and 29/100.
 
 Each is written up in [`docs/`](docs/), and each has a regression test.
 
@@ -151,7 +155,7 @@ Kinematic quality, measured on **100 real DexYCB sequences**:
 | max jerk | -35.5% | -44.2% |
 | smoothness cost | -56.3% | -93.0% |
 | max velocity | -57.2% | -65.4% |
-| sequences converged | 85/100 | 100/100 |
+| search improved on its starting point | 21/100 | 29/100 |
 
 Imitation quality, measured on **100 real DexYCB sequences**. The middle row is a
 control that isolates the optimizer, because DexYCB captures at 30 Hz and the
@@ -176,8 +180,15 @@ reason is input roughness, which is untested.
 Caveats worth stating rather than hiding: optimized `max_velocity` is 2.0000000000000018
 with a standard deviation of 4e-16, so velocity and acceleration "gains" are
 constraint saturation rather than optimization headroom; the BC metric measures
-how learnable the trajectories are, not task success; and 15 of 100 real
-sequences do not converge. Artifacts are in `results/trajectory_optimization/`.
+how learnable the trajectories are, not task success; and the optimizer's search
+barely engages at all, improving on its own starting point for only 21 of 100
+real sequences, because its first stochastic step usually overshoots far enough
+to trip the abort guard. That last point was itself a bug: the convergence flag
+compared against the unprojected input rather than the projected starting point,
+so it counted projection as optimization. See
+[`docs/RESULTS.md`](docs/RESULTS.md) and
+`scripts/diagnose_convergence.py`. Artifacts are in
+`results/trajectory_optimization/`.
 
 #### The SAC ablation (null result)
 
@@ -336,8 +347,12 @@ uv run ruff check .        # lint
 uv run ruff format .       # format
 ```
 
-The gate is: `ruff check`, `ruff format --check`, and `pytest` all pass. There
-is no CI configuration, so run it locally before committing.
+The gate is: `ruff check`, `ruff format --check`, and `pytest` all pass. It runs
+locally and in CI (`.github/workflows/ci.yml`), which also builds the C++
+library and runs its GoogleTest suite. The CI job is pinned to `windows-latest`
+because `pyproject.toml` restricts dependency resolution to win32/AMD64 and
+sources torch from a cu128 index for that platform; making CI portable means
+changing that pin.
 
 ## Scope status
 
@@ -365,10 +380,13 @@ residual model non-trivial and which is not yet implemented. See
 DexYCB subjects beyond subject-01. The ONNX exporter still uses the legacy
 TorchScript path, which PyTorch 2.9 will retire in favour of `torch.export`.
 
-**Known weaknesses.** 15 of 100 real sequences fail to converge in the
-optimizer. The optimizer's effect on mean imitation error is 5 percent on real
-data against 52 percent on synthetic, and the reason is untested. There is no CI
-configuration, so the gate is run locally.
+**Known weaknesses.** The optimizer's search barely engages: it improves on its
+own starting point for 21 of 100 real sequences and 29 of 100 synthetic ones,
+because the first stochastic step usually overshoots far enough to trip the
+abort guard. Tuning that, or replacing the abort rule with a line search, is the
+clearest outstanding work. The optimizer's effect on mean imitation error is
+5 percent on real data against 52 percent on synthetic, and the reason is
+untested.
 
 ## Licenses
 
