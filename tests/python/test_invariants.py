@@ -187,6 +187,26 @@ DEMO_SETS = {
 DEGENERATE_SETS = {"dexycb": "data/demonstrations_dexycb"}
 
 
+def _demo_paths(directory: str) -> list[Path]:
+    """Demo files in a directory, or None when it holds none.
+
+    `data/` is gitignored, but a fresh clone still contains the directories
+    because each ships a `.gitkeep`. A guard that tests `is_dir()` therefore
+    passes on a clone that has no data at all, and the check below fails on
+    `assert paths` instead of skipping. The condition that matters is whether
+    there are demos, not whether there is a directory.
+    """
+    return sorted(Path(directory).glob("*.npz")) or None
+
+
+def _require_demos(name: str, directory: str) -> list[Path]:
+    """Skip unless the named demo set is present, returning its files."""
+    paths = _demo_paths(directory)
+    if paths is None:
+        pytest.skip(f"{name} demos not generated")
+    return paths
+
+
 def _stack_finger_positions(directory: str) -> np.ndarray:
     from human2robot.data.allegro_demos import load_demo_npz
 
@@ -210,8 +230,7 @@ def test_retargeted_demos_are_not_degenerate(name: str) -> None:
     dimension of 16. A genuine hand retargeting uses most of them.
     """
     directory = DEMO_SETS[name]
-    if not Path(directory).is_dir():
-        pytest.skip(f"{name} demos not generated")
+    _require_demos(name, directory)
     assert _dims_for_90_percent_variance(_stack_finger_positions(directory)) >= 4
 
 
@@ -223,8 +242,7 @@ def test_known_degenerate_set_is_still_degenerate(name: str) -> None:
     loudly instead of the published numbers quietly changing meaning.
     """
     directory = DEGENERATE_SETS[name]
-    if not Path(directory).is_dir():
-        pytest.skip(f"{name} demos not generated")
+    _require_demos(name, directory)
     assert _dims_for_90_percent_variance(_stack_finger_positions(directory)) == 1
 
 
@@ -239,8 +257,7 @@ def test_finger_joints_articulate_independently(name: str) -> None:
     the direction of the gradient.
     """
     directory = DEMO_SETS[name]
-    if not Path(directory).is_dir():
-        pytest.skip(f"{name} demos not generated")
+    _require_demos(name, directory)
     q = _stack_finger_positions(directory)
     adjacent = np.mean(
         [
@@ -423,11 +440,8 @@ def test_retargeted_demos_fit_the_model_bounds() -> None:
     from human2robot.data.allegro_demos import load_demo_npz
 
     directory = "data/demonstrations_dexycb_ik"
-    if not Path(directory).is_dir():
-        pytest.skip("IK demos not generated")
-    q16 = np.concatenate(
-        [load_demo_npz(p).q[:, 6:] for p in sorted(Path(directory).glob("*.npz"))]
-    )
+    paths = _require_demos("IK", directory)
+    q16 = np.concatenate([load_demo_npz(p).q[:, 6:] for p in paths])
     low, high = limits.finger_bounds()
     assert np.all(q16.min(axis=0) >= low - 0.02)
     assert np.all(q16.max(axis=0) <= high + 0.02)
