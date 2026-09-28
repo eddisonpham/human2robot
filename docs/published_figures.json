@@ -1,0 +1,439 @@
+{
+  "sources": {
+    "acceleration_reduction_s1": [
+      "real_vs_synthetic_s1.json",
+      [
+        "dexycb",
+        "max_acceleration_reduction_pct"
+      ]
+    ],
+    "acceleration_reduction_s2": [
+      "real_vs_synthetic_s2.json",
+      [
+        "dexycb",
+        "max_acceleration_reduction_pct"
+      ]
+    ],
+    "bc_controlled_s1": [
+      "bc_downstream_dexycb.json",
+      [
+        "__controlled_pct__"
+      ]
+    ],
+    "bc_controlled_s2": [
+      "bc_downstream_dexycb_s2.json",
+      [
+        "__controlled_pct__"
+      ]
+    ],
+    "bc_controlled_synthetic": [
+      "bc_downstream.json",
+      [
+        "__naive_pct__"
+      ]
+    ],
+    "bc_max_err_control_s1": [
+      "bc_downstream_dexycb.json",
+      [
+        "resampled_control",
+        "max_err"
+      ]
+    ],
+    "bc_max_err_control_s2": [
+      "bc_downstream_dexycb_s2.json",
+      [
+        "resampled_control",
+        "max_err"
+      ]
+    ],
+    "bc_max_err_opt_s1": [
+      "bc_downstream_dexycb.json",
+      [
+        "optimized",
+        "max_err"
+      ]
+    ],
+    "bc_max_err_opt_s2": [
+      "bc_downstream_dexycb_s2.json",
+      [
+        "optimized",
+        "max_err"
+      ]
+    ],
+    "bc_max_err_raw_s1": [
+      "bc_downstream_dexycb.json",
+      [
+        "raw",
+        "max_err"
+      ]
+    ],
+    "bc_max_err_raw_s2": [
+      "bc_downstream_dexycb_s2.json",
+      [
+        "raw",
+        "max_err"
+      ]
+    ],
+    "convergence_s1": [
+      "real_vs_synthetic_s1.json",
+      [
+        "dexycb",
+        "converged"
+      ]
+    ],
+    "convergence_s2": [
+      "real_vs_synthetic_s2.json",
+      [
+        "dexycb",
+        "converged"
+      ]
+    ],
+    "convergence_synthetic": [
+      "real_vs_synthetic_s1.json",
+      [
+        "synthetic",
+        "converged"
+      ]
+    ],
+    "descent_cross_subject": [
+      "optimizer_split.json",
+      [
+        "cross_subject_dexycb_s2",
+        "improved"
+      ]
+    ],
+    "descent_holdout_s1": [
+      "optimizer_split.json",
+      [
+        "holdout_dexycb",
+        "improved"
+      ]
+    ],
+    "executable_control_s1": [
+      "feasibility_dexycb.json",
+      [
+        "arms",
+        "resampled",
+        "feasible"
+      ]
+    ],
+    "executable_control_s2": [
+      "feasibility_dexycb_s2.json",
+      [
+        "arms",
+        "resampled",
+        "feasible"
+      ]
+    ],
+    "executable_opt_s1": [
+      "feasibility_dexycb.json",
+      [
+        "arms",
+        "optimized",
+        "feasible"
+      ]
+    ],
+    "executable_opt_s2": [
+      "feasibility_dexycb_s2.json",
+      [
+        "arms",
+        "optimized",
+        "feasible"
+      ]
+    ],
+    "executable_opt_synthetic": [
+      "feasibility_synthetic.json",
+      [
+        "arms",
+        "optimized",
+        "feasible"
+      ]
+    ],
+    "executable_raw_s1": [
+      "feasibility_dexycb.json",
+      [
+        "arms",
+        "raw",
+        "feasible"
+      ]
+    ],
+    "executable_raw_s2": [
+      "feasibility_dexycb_s2.json",
+      [
+        "arms",
+        "raw",
+        "feasible"
+      ]
+    ],
+    "executable_raw_synthetic": [
+      "feasibility_synthetic.json",
+      [
+        "arms",
+        "raw",
+        "feasible"
+      ]
+    ],
+    "granularity_prefix_s1": [
+      "bc_split_granularity_dexycb.json",
+      [
+        "results",
+        "prefix",
+        "advantage_pct",
+        "mean"
+      ]
+    ],
+    "granularity_prefix_s2": [
+      "bc_split_granularity_dexycb_s2.json",
+      [
+        "results",
+        "prefix",
+        "advantage_pct",
+        "mean"
+      ]
+    ],
+    "granularity_prefix_synthetic": [
+      "bc_split_granularity_synthetic.json",
+      [
+        "results",
+        "prefix",
+        "advantage_pct",
+        "mean"
+      ]
+    ],
+    "granularity_trajectory_s1": [
+      "bc_split_granularity_dexycb.json",
+      [
+        "results",
+        "trajectory",
+        "advantage_pct",
+        "mean"
+      ]
+    ],
+    "granularity_trajectory_s2": [
+      "bc_split_granularity_dexycb_s2.json",
+      [
+        "results",
+        "trajectory",
+        "advantage_pct",
+        "mean"
+      ]
+    ],
+    "granularity_transition_s1": [
+      "bc_split_granularity_dexycb.json",
+      [
+        "results",
+        "transition",
+        "advantage_pct",
+        "mean"
+      ]
+    ],
+    "granularity_transition_s2": [
+      "bc_split_granularity_dexycb_s2.json",
+      [
+        "results",
+        "transition",
+        "advantage_pct",
+        "mean"
+      ]
+    ],
+    "jerk_reduction_s1": [
+      "real_vs_synthetic_s1.json",
+      [
+        "dexycb",
+        "max_jerk_reduction_pct"
+      ]
+    ],
+    "jerk_reduction_s2": [
+      "real_vs_synthetic_s2.json",
+      [
+        "dexycb",
+        "max_jerk_reduction_pct"
+      ]
+    ],
+    "jerk_reduction_synthetic": [
+      "real_vs_synthetic_s1.json",
+      [
+        "synthetic",
+        "max_jerk_reduction_pct"
+      ]
+    ],
+    "median_cost_reduction_cross_subject": [
+      "optimizer_split.json",
+      [
+        "cross_subject_dexycb_s2",
+        "median_improvement_pct"
+      ]
+    ],
+    "median_cost_reduction_holdout_s1": [
+      "optimizer_split.json",
+      [
+        "holdout_dexycb",
+        "median_improvement_pct"
+      ]
+    ],
+    "noise_scale": [
+      "optimizer_split.json",
+      [
+        "noise_scale"
+      ]
+    ],
+    "prefix_control_score_s1": [
+      "bc_split_granularity_dexycb.json",
+      [
+        "results",
+        "prefix",
+        "resampled_control",
+        "mean"
+      ]
+    ],
+    "prefix_control_score_synthetic": [
+      "bc_split_granularity_synthetic.json",
+      [
+        "results",
+        "prefix",
+        "raw",
+        "mean"
+      ]
+    ],
+    "prefix_opt_score_s1": [
+      "bc_split_granularity_dexycb.json",
+      [
+        "results",
+        "prefix",
+        "optimized",
+        "mean"
+      ]
+    ],
+    "prefix_trivial_baseline_s1": [
+      "bc_split_granularity_dexycb.json",
+      [
+        "results",
+        "prefix",
+        "trivial_baseline_mse",
+        "resampled_control"
+      ]
+    ],
+    "prefix_trivial_baseline_synthetic": [
+      "bc_split_granularity_synthetic.json",
+      [
+        "results",
+        "prefix",
+        "trivial_baseline_mse",
+        "raw"
+      ]
+    ],
+    "selected_step_size": [
+      "optimizer_split.json",
+      [
+        "selected_step_size"
+      ]
+    ],
+    "smoothness_reduction_s1": [
+      "real_vs_synthetic_s1.json",
+      [
+        "dexycb",
+        "smoothness_reduction_pct"
+      ]
+    ],
+    "smoothness_reduction_s2": [
+      "real_vs_synthetic_s2.json",
+      [
+        "dexycb",
+        "smoothness_reduction_pct"
+      ]
+    ],
+    "tail_speed_ratio_control_s1": [
+      "tail_extrapolation_dexycb.json",
+      [
+        "arms",
+        "resampled_control",
+        "terminal_speed",
+        "final_over_mid_median"
+      ]
+    ],
+    "tail_speed_ratio_optimized_s1": [
+      "tail_extrapolation_dexycb.json",
+      [
+        "arms",
+        "optimized",
+        "terminal_speed",
+        "final_over_mid_median"
+      ]
+    ],
+    "tail_speed_ratio_raw_synthetic": [
+      "tail_extrapolation_synthetic.json",
+      [
+        "arms",
+        "raw",
+        "terminal_speed",
+        "final_over_mid_median"
+      ]
+    ],
+    "velocity_reduction_s1": [
+      "real_vs_synthetic_s1.json",
+      [
+        "dexycb",
+        "max_velocity_reduction_pct"
+      ]
+    ],
+    "velocity_reduction_s2": [
+      "real_vs_synthetic_s2.json",
+      [
+        "dexycb",
+        "max_velocity_reduction_pct"
+      ]
+    ]
+  },
+  "figures": {
+    "acceleration_reduction_s1": 25.639539698574787,
+    "acceleration_reduction_s2": 24.01271470112627,
+    "bc_controlled_s1": 29.475790377775258,
+    "bc_controlled_s2": 28.954366769029615,
+    "bc_controlled_synthetic": 56.75620154863519,
+    "bc_max_err_control_s1": 0.14345939457416534,
+    "bc_max_err_control_s2": 0.15914441645145416,
+    "bc_max_err_opt_s1": 0.061646994203329086,
+    "bc_max_err_opt_s2": 0.064841128885746,
+    "bc_max_err_raw_s1": 0.28059518337249756,
+    "bc_max_err_raw_s2": 0.26361826062202454,
+    "convergence_s1": 100.0,
+    "convergence_s2": 100.0,
+    "convergence_synthetic": 92.0,
+    "descent_cross_subject": 100.0,
+    "descent_holdout_s1": 50.0,
+    "executable_control_s1": 14.0,
+    "executable_control_s2": 6.0,
+    "executable_opt_s1": 34.0,
+    "executable_opt_s2": 8.0,
+    "executable_opt_synthetic": 100.0,
+    "executable_raw_s1": 6.0,
+    "executable_raw_s2": 0.0,
+    "executable_raw_synthetic": 100.0,
+    "granularity_prefix_s1": -54.22601229834,
+    "granularity_prefix_s2": -104.87409378465725,
+    "granularity_prefix_synthetic": 40.57233545953987,
+    "granularity_trajectory_s1": 25.24992103817622,
+    "granularity_trajectory_s2": 33.29620865473694,
+    "granularity_transition_s1": 34.72833493308753,
+    "granularity_transition_s2": 29.767041921613135,
+    "jerk_reduction_s1": 16.75463824264629,
+    "jerk_reduction_s2": 12.084506911983773,
+    "jerk_reduction_synthetic": 49.167761746999716,
+    "median_cost_reduction_cross_subject": 43.01800039301878,
+    "median_cost_reduction_holdout_s1": 35.96061242604483,
+    "noise_scale": 0.0,
+    "prefix_control_score_s1": 0.00014471789472736418,
+    "prefix_control_score_synthetic": 0.0006934504257515073,
+    "prefix_opt_score_s1": 0.00022289651969913392,
+    "prefix_trivial_baseline_s1": 0.0001465466048102826,
+    "prefix_trivial_baseline_synthetic": 0.00096078438218683,
+    "selected_step_size": 0.35,
+    "smoothness_reduction_s1": 30.444280389801083,
+    "smoothness_reduction_s2": 28.674772191905053,
+    "tail_speed_ratio_control_s1": 0.15764665603637695,
+    "tail_speed_ratio_optimized_s1": 0.6147880554199219,
+    "tail_speed_ratio_raw_synthetic": 0.9674001336097717,
+    "velocity_reduction_s1": 71.71659281074064,
+    "velocity_reduction_s2": 72.155973956074
+  }
+}

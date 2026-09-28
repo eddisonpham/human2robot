@@ -18,21 +18,13 @@ htmlcov/
 
 # C++ build tree; cpp sources stay under version control
 /cpp/build/
-/target/
 
-# The Rust inference server (Phase 10) is NOT unstarted: rust/inference_server/
-# holds 121 lines of working axum + ONNX Runtime code in src/main.rs.
-#
-# It is currently untracked by anything. rust/inference_server/.git exists but is
-# an accidental `git init` with zero commits, zero refs and zero objects, so the
-# code has no version control at all and lives only on this disk. Folding it
-# into this repository requires removing that vestigial .git directory first,
-# which is a scope decision that is still open.
-#
-# Until that is decided it is ignored here so the empty nested repository does
-# not appear as a broken gitlink. Do not read this as a statement that the work
-# does not exist.
-/rust/
+# Cargo build trees. The pattern is anchored at the repository root and then
+# repeated for the Rust workspace, because an unanchored `target/` would also
+# match any directory of that name anywhere in the tree, including inside data
+# and reference checkouts.
+/target/
+/rust/**/target/
 
 # Experiment and data outputs are never committed
 /data/

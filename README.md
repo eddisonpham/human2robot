@@ -8,17 +8,24 @@ used as demonstrations for a SAC trainer, which is a secondary consumer rather
 than the point of the project.
 
 **The deliverable is the conversion pipeline, and it is validated across
-subjects.** Human hand motion is retargeted onto the 22-DoF Allegro through
-DexPilot IK against MANO keypoints, then projected onto joint, velocity, and
-acceleration limits by a C++20 constrained optimizer. On 100 sequences from each
-of two DexYCB subjects, with every hyperparameter selected on subject-01 alone,
-the optimizer improves **99 of 100 sequences on subject-02**, a person it has
-never seen, and cuts held-out imitation error **~50 percent** there when whole
-trajectories are held out.
+subjects.** Human hand motion is retargeted onto the Allegro through DexPilot IK
+against MANO keypoints, then projected onto joint, velocity, and acceleration
+limits by a C++20 constrained optimizer. On 100 sequences from each of two
+DexYCB subjects, with every hyperparameter selected on subject-01 alone, the
+optimizer improves **100 of 100 sequences on subject-02**, a person it has never
+seen.
+
+The number that matters most is about the robot rather than the trajectory.
+Replaying each optimized trajectory open-loop in MuJoCo and measuring how far
+the hand actually tracks, the pipeline takes subject-01 from **6 of 100
+executable to 34 of 100**, and subject-02 from 0 to 8. Real human motion is
+about twice as hard for the optimizer as the synthetic set, and even the
+optimized arm is only a third executable, so this improves a real problem
+without solving it.
 
 This is primarily an **engineering** project. The ML is the application; the
 substance is the pipeline, the correctness tooling, and the discipline that keeps
-measurements trustworthy. Six separate results in this repository turned out to
+measurements trustworthy. Nine separate results in this repository turned out to
 be artifacts of the code or the measurement rather than properties of the
 method, each caught by reading code or checking a control, never by watching a
 metric:
@@ -42,18 +49,38 @@ metric:
    retargeting.** The retargeter collapsed 16 joint dimensions into 1, carrying
    90 percent of its variance in a single direction, while a real DexPilot IK
    path sat unused. Fixing it dropped the headline jerk result from -41.9% to
-   -9.1% while raising the descent rate to 100/100. The inflation was an
+   -16.8% while raising the descent rate to 100/100. The inflation was an
    artifact of the artifact. See
    [`docs/FINDINGS_retargeting.md`](docs/FINDINGS_retargeting.md).
+7. **The joint limits were wrong in four places at once.** Fifteen of sixteen
+   finger entries disagreed with the MuJoCo model, and the model has 16
+   actuators rather than the 22 the code assumed. Correcting them took limit
+   violation to 0.0000, raised executability from 6/100 to 34/100, and *lowered*
+   the jerk result from -9.1% to -16.8%. See
+   [`docs/FINDINGS_joint_limits.md`](docs/FINDINGS_joint_limits.md).
+8. **Two "evaluations" never ran the simulator.** One named for MuJoCo replay
+   compared arrays against stub bounds of `zeros(22)` and `ones(22)`; the
+   domain-randomization function randomized nothing at all. Both are replaced
+   by real implementations.
+9. **A published error bar was invented.** The split-granularity table quoted
+   three-seed standard deviations for an experiment the script ran at a single
+   seed, and wrote every data set to one file, so the last run silently
+   overwrote the others. The mean numbers happened to be right; the spread was
+   not measured. Every figure in this file is now pinned to its artifact by
+   `tests/python/test_published_results.py`, which is how this was found.
 
-Each is written up in [`docs/`](docs/), and each has a regression test.
+Each is written up in [`docs/`](docs/), and each has a regression test. Every
+headline number in this file is read from `results/trajectory_optimization/*.json`
+by `tests/python/test_published_results.py`, so a figure here cannot drift away
+from the artifact it was measured on without a test failing.
 
 **What the pipeline does, on real data.** DexYCB hand motion sequences are
 ingested, MANO poses retargeted to Allegro joints through DexPilot IK, and the
 result projected onto joint, velocity, and acceleration limits. On subject-01
-the optimizer cuts smoothness cost 30 percent and worst-case imitation error
-from 0.153 to 0.067. The same pipeline runs on a second subject it was never
-tuned on.
+the optimizer cuts smoothness cost 30 percent, worst-case imitation error from
+0.143 to 0.062, and raises the share of trajectories the simulated hand can
+actually execute from 6 in 100 to 34 in 100. The same pipeline runs on a second
+subject it was never tuned on.
 
 **The reinforcement learning side is a null result and is reported as one.** The
 question was whether human demonstrations and physics priors help SAC control a
@@ -70,6 +97,7 @@ rather than dropped, in [`REVIEW_STATUS.md`](REVIEW_STATUS.md) and
 | [`docs/RESULTS.md`](docs/RESULTS.md) | Every measured result, with the data set each was measured on |
 | [`REVIEW_STATUS.md`](REVIEW_STATUS.md) | The RL ablation, critic health, and its open issues |
 | [`docs/FINDINGS_residual_degeneracy.md`](docs/FINDINGS_residual_degeneracy.md) | Why conditions D and E cannot produce a result |
+| [`docs/FINDINGS_joint_limits.md`](docs/FINDINGS_joint_limits.md) | Four wrong copies of the joint limits, and what correcting them cost |
 | [`docs/FINDINGS_training_hang.md`](docs/FINDINGS_training_hang.md) | The CUDA driver hang, diagnosed from a native stack dump |
 | [`docs/FINDINGS_metrics_integrity.md`](docs/FINDINGS_metrics_integrity.md) | Resume corrupting the metrics stream, and the recovery |
 | [`agents/`](agents/) | Read-only build specification, start at [`00_INDEX.md`](agents/00_INDEX.md) |
@@ -180,46 +208,71 @@ retargeted through DexPilot IK:
 
 | Quantity | Subject-01 | Subject-02 (held out) | Synthetic |
 | --- | --- | --- | --- |
-| max jerk | -9.1% | -4.6% | -50.6% |
-| smoothness cost | -30.0% | -28.1% | -93.7% |
+| max jerk | -16.8% | -12.1% | -49.2% |
+| smoothness cost | -30.4% | -28.7% | -92.6% |
 | max velocity | -71.7% | -72.2% | -65.4% |
-| max acceleration | -18.0% | -13.9% | -30.3% |
-| search improved on its starting point | 50/50 held out | **99/100** | 94/100 |
-| median cost reduction achieved | 33.0% | 37.3% | 15.1% |
+| max acceleration | -25.6% | -24.0% | -25.1% |
+| search improved on its starting point | 50/50 held out | **100/100** | 92/100 |
+| median cost reduction achieved | 36.0% | 43.0% | 14.8% |
+| **executable in simulation** | **34/100** | **8/100** | **100/100** |
 
-Jerk moves very little on real retargeted motion, and that is the correct
+Every row above except the last is a property of the trajectory. The last is a
+property of the robot, and it is the one the pipeline exists to move.
+
+Jerk moves modestly on real retargeted motion, and that is the correct
 result rather than a disappointing one: real hand motion is already smooth, so a
 smoothness objective has little left to take. The earlier -41.9% came from a
 degenerate input with no structure to preserve, and is discussed in
 [`docs/FINDINGS_retargeting.md`](docs/FINDINGS_retargeting.md).
 
+**Can the hand actually perform these motions?** Replaying each trajectory
+open-loop in MuJoCo and measuring tracking drift, the optimizer takes
+subject-01 from **6/100 to 34/100 executable** and subject-02 from 0/100 to
+8/100, while synthetic data is already 100/100 executable on both arms. Most of
+the subject-01 gain is resampling to the control rate (6 to 14) and the rest is
+the optimizer. Limit violation is 0.0000 on every arm: the trajectories respect
+the actuator bounds but the hand frequently cannot reach them in the time
+allowed, and only the second failure is what this measures.
+
 Imitation quality, subject-01, 100 real sequences. The middle row is a control
 that isolates the optimizer, because DexYCB captures at 30 Hz and the
 environment runs at 20 ms:
 
-| Arm | BC holdout MSE | Max error | Transitions |
-| --- | --- | --- | --- |
-| raw (30 Hz) | 9.78e-4 | 0.265 | 6,146 |
-| resampled control (no optimizer) | 2.33e-4 | 0.153 | 10,280 |
-| optimized | **1.43e-4** | **0.067** | 10,280 |
+| Arm | BC holdout MSE | Max error | Transitions | Executable |
+| --- | --- | --- | --- | --- |
+| raw (30 Hz) | 9.90e-4 | 0.281 | 6,146 | 6/100 |
+| resampled control (no optimizer) | 2.42e-4 | 0.143 | 10,280 | 14/100 |
+| optimized | **1.71e-4** | **0.062** | 10,280 | **34/100** |
 
-Naive raw-versus-optimized suggests 85.4 percent. Resampling accounts for 76.2
-points of that, and the optimizer adds **38.5 percent** on top. Subject-02 gives
-81.6 percent naive and **39.5 percent** controlled, with worst-case error
-0.161 to 0.072.
+Naive raw-versus-optimized suggests 82.8 percent. Resampling accounts for 75.6
+points of that, and the optimizer adds **29.5 percent** on top. Subject-02 gives
+78.0 percent naive and **29.0 percent** controlled, with worst-case error
+0.159 to 0.065.
 
-**The holdout granularity matters, and here it helps.** Holding out whole
-*trajectories* rather than random transitions gives +49.7% on subject-01
-(sd 10.7) and +51.4% on subject-02 (sd 6.6), positive on every seed of 5. On
-the degenerate data the same test was the weakest at +21% with a sign that
-flipped, which is what one should expect from a signal that is trivially
-predictable. Extrapolating the tail of every trajectory is still weak, +6.1% and
--24.6%, and remains unexplained.
+**The holdout granularity matters, and here it helps.** Holding out random
+transitions, the published split, gives +34.7% on subject-01 (sd 3.6) and +29.8%
+on subject-02 (sd 3.0). Holding out whole *trajectories* instead, so nothing
+adjacent leaks between train and holdout, gives +25.2% (sd 14.6) and +33.3%
+(sd 9.5), positive on every seed of 5. On the degenerate data the same
+whole-trajectory test was the weakest at +21% with a sign that flipped, which is
+what one should expect from a signal that is trivially predictable.
+
+Extrapolating the tail of every trajectory reverses the sign, -54.2% and
+-104.9%, and that reversal is now **explained rather than outstanding**. Real
+hand motion decelerates into a stop, so the held-out tail is nearly motionless
+and the control arm scores 1.45e-4 against a do-nothing baseline of 1.47e-4:
+the fitted model does no better than predicting that the hand stopped. A split
+whose answer is near zero rewards whichever arm stops hardest. The optimizer
+redistributes the deceleration rather than removing it, so it loses a test it
+cannot win. On synthetic data there is no deceleration, the tail genuinely
+moves, and the same split is +40.6%. Tail extrapolation is untested by these
+data rather than failed by the optimizer.
 
 On the **synthetic** set, where both arms are already at 20 ms so the comparison
 is clean, the optimizer cuts held-out error **56.8 percent** (MSE 7.08e-4 to
-3.06e-4, max error 0.120 to 0.065). Real human motion is harder for the
-optimizer than synthetic demonstrations, and the reason is untested.
+3.06e-4, max error 0.120 to 0.065). Real human motion is about twice as hard
+for the optimizer, most likely because it is faster and more articulated than a
+comfortable synthetic sweep, but that hypothesis is untested.
 
 Caveats worth stating rather than hiding: optimized `max_velocity` is 2.0000000000000018
 with a standard deviation of 4e-16, so the velocity "gain" is constraint
@@ -232,8 +285,8 @@ test this data allows.
 subject-01 sequences, selects from that half alone, then evaluates once on the
 last 50 and again on subject-02 in full. Subject-02 is a different person's hand
 and no hyperparameter was ever selected on it, so it is a genuine cross-subject
-test rather than a within-subject split: **99/100 improved, median 37.3
-percent**, against 50/50 and 33.0 percent within subject-01. An earlier version
+test rather than a within-subject split: **100/100 improved, median 43.0
+percent**, against 50/50 and 36.0 percent within subject-01. An earlier version
 of this table was swept and reported on the same 100 sequences it was tuned on,
 which is choosing hyperparameters on the evaluation set; that contaminated
 protocol is documented rather than quoted. See [`docs/RESULTS.md`](docs/RESULTS.md),

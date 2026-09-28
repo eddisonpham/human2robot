@@ -8,10 +8,12 @@ it is done. Verified against the repository at commit `f28423d`.
 
 - [x] **A feasibility metric against the simulated hand** (was Tier 0 item 1).
   `evaluation/feasibility.py`, calibrated on three cases of known difficulty,
-  with `settle_steps` removing the hand's 0.5 s start transient. Measured on
-  the synthetic set it also replaced the fake replay check with a real one, and
-  showed optimization *halves* tracking drift (0.25 to 0.30 rad raw, 0.11
-  optimized) rather than merely looking smoother.
+  with `settle_steps` removing the hand's 0.5 s start transient.
+  `scripts/score_feasibility.py` measures it on all three data sets:
+  optimization takes subject-01 from **6/100 to 34/100 executable** and
+  subject-02 from 0 to 8, while synthetic is 100/100 on both arms. It also
+  replaced the fake replay check with a real one, and showed optimization
+  *halves* tracking drift rather than merely looking smoother.
 - [x] **`domain_randomized_eval` really randomizes** (was Tier 1 item 1).
 - [x] **The degenerate retargeter is gone** and a rank/dimensionality invariant
   prevents it recurring.
@@ -19,7 +21,31 @@ it is done. Verified against the repository at commit `f28423d`.
   `check_bc_split_granularity.py`, `run_downstream_bc.py`, and the experiment
   module. All four now use `optimization.experiment`.
 - [x] **Joint limits come from the model.** The four hand-written copies had
-  already drifted, and 15 of 16 finger entries were wrong.
+  already drifted, and 15 of 16 finger entries were wrong. See
+  `docs/FINDINGS_joint_limits.md`.
+- [x] **Every published figure is pinned to its artifact.**
+  `evaluation/published.py` resolves 50 named figures out of
+  `results/trajectory_optimization/*.json`, and
+  `tests/python/test_published_results.py` asserts the exact strings that appear
+  in `README.md` and `docs/RESULTS.md`. A committed snapshot in
+  `docs/published_figures.json` keeps the check running on a fresh clone, where
+  `results/` is gitignored.
+- [x] **The tail-extrapolation reversal is explained.** It was the last open
+  question in the conversion pipeline. `scripts/diagnose_tail_extrapolation.py`
+  shows real hand motion decelerates into a stop, so the prefix split's holdout
+  is nearly motionless and the control arm scores at the predict-nothing
+  baseline. The split cannot rank the optimizer on this data. It is not an open
+  defect, it is a property of the data, and it is now written up as one.
+- [x] **The split-gragularity script was reporting one seed as five.** It ran
+  a single split per granularity while the documentation quoted three-seed
+  error bars, and every data set wrote to the same file, so the last run
+  silently overwrote the others. It now runs 5 seeds, reports mean and sd, and
+  writes one file per set.
+- [x] **`rust/` is under version control.** The vestigial empty `.git` was
+  removed with approval and the code folded in. It did not compile: it was
+  written against a different `ort` API than the pinned `2.0.0-rc.13`, and had
+  never been built because it sat outside version control. It builds and has 6
+  tests now.
 
 ## Defects this pass found that were not on the list
 
@@ -42,10 +68,23 @@ These are worth reading before trusting any earlier number.
   tested in a file named `test_mujoco_replay_optimized.py`, and never touched
   the simulator: it compared `a_demo` arithmetic against stub bounds of
   `zeros(22)` and `ones(22)`. Removed; `evaluation.feasibility` is the real one.
-- **The Rust server has no version control at all.** Worse than "untracked" —
-  `rust/inference_server/.git` is an accidental `git init` with zero commits,
-  zero refs, zero objects and no remote. The 121 lines of `main.rs` exist only
-  on this disk. See the open decision below.
+- **The Rust server had no version control at all.** Worse than "untracked" —
+  `rust/inference_server/.git` was an accidental `git init` with zero commits,
+  zero refs, zero objects and no remote, so the 121 lines of `main.rs` existed
+  only on one disk. It also **did not compile**: written against a different
+  `ort` API than the pinned version provides, and never built by anyone. Both
+  are fixed.
+- **The split-granularity table was fabricated in its error bars.** It quoted
+  three-seed standard deviations for an experiment the script ran at one seed,
+  and wrote every data set to one output file so the last run overwrote the
+  rest. The numbers it did produce happened to be right; the spread was
+  invented.
+- **The published numbers and the recorded artifacts had drifted apart.** The
+  kinematic table claimed 99/100 where the artifact said 100/100, and the
+  convergence medians differed too, because the limits correction had been made
+  without re-running the experiments that the documentation quotes. Nothing
+  detected this, since the documents were a hand-copied second copy of data
+  that already existed on disk in machine-readable form.
 
 ## Tier 0: things that would let a false number back into the docs
 
@@ -85,15 +124,6 @@ These are worth reading before trusting any earlier number.
   physics model *is* the simulator, so the residual is identically zero. Note
   that domain randomization now exists, so this is a physics question and no
   longer an implementation gap.
-- [ ] **Track `rust/` or delete it. Needs your decision.** The gitignore
-  comment no longer lies (it now records what is actually there), but the code
-  still has no version control: `rust/inference_server/.git` is an empty
-  `git init` with zero commits and zero objects. Folding the code into this
-  repository requires removing that vestigial directory first, and deleting a
-  git repository is not a call to make on your behalf. Two clean options:
-  (a) remove `rust/inference_server/.git` and track `rust/` here with
-  `target/` ignored narrowly, or (b) make it a real separate repository with
-  its own commits and remote. I verified nothing would be lost either way.
 - [ ] **Decide the fate of conditions D and E.** The configs
   `tier_b_cond_d.yaml` and `tier_b_cond_e.yaml` are still present and a reader
   will assume they are runnable. They are structurally degenerate: the nominal
@@ -154,9 +184,12 @@ These are worth reading before trusting any earlier number.
   is whether filtering demonstrations by feasibility improves anything
   downstream. That is the experiment the RL half was supposed to answer, and it
   has never been run on data that passes a feasibility check.
-- [ ] **Rust inference server (depends on tracking it first).** 121 lines exist.
-  Finish it or remove it; the current state is the worst of both, since it
-  looks unimplemented in the docs and is invisible in git.
+- [ ] **Rust inference server.** It now builds, has 6 tests, and is under
+  version control, but it has still **never been run against a model**, so
+  there is no latency figure and no confirmation that the manifest's tensor
+  names match an actual export. Before it can be called done it needs an
+  inference test against a checked-in model, a recorded latency, and the ONNX
+  exporter moved off the deprecated `torch.onnx.export` path.
 - [ ] **The Shadow Hand stretch.** Not started. Only worth doing if the Allegro
   results are solid, since it is a generalization claim on top of everything
   else.

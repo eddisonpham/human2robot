@@ -42,6 +42,8 @@ __all__ = [
     "CAPTURE_DT",
     "CONTROL_DT",
     "DEFAULT_STEP_SIZE",
+    "HOLDOUT_FRACTION",
+    "PREFIX_FRACTION",
     "METRIC_KEYS",
     "NOISE_SCALE",
     "aggregate_metrics",
@@ -60,6 +62,15 @@ DEFAULT_STEP_SIZE = 0.35
 
 #: See the module docstring. 0 is a structural fix, not a tuning choice.
 NOISE_SCALE = 0.0
+
+#: Holdout fraction shared by all three splits. The prefix split is scored
+#: against a trivial baseline computed on the same slice, so the fraction is
+#: needed outside the split itself.
+HOLDOUT_FRACTION = 0.1
+
+#: Alias for `HOLDOUT_FRACTION` at the prefix split's cut, so a caller scoring
+#: the held-out tail does not have to restate the number.
+PREFIX_FRACTION = HOLDOUT_FRACTION
 
 #: The metrics every kinematic table reports.
 METRIC_KEYS = ("max_velocity", "max_acceleration", "max_jerk", "smoothness")
@@ -155,7 +166,9 @@ def _pack(trajectories: Sequence[np.ndarray]) -> tuple[np.ndarray, np.ndarray]:
 
 
 def split_transition(
-    trajectories: Sequence[np.ndarray], rng: np.random.Generator, fraction: float = 0.1
+    trajectories: Sequence[np.ndarray],
+    rng: np.random.Generator,
+    fraction: float = HOLDOUT_FRACTION,
 ) -> tuple[tuple[np.ndarray, np.ndarray], tuple[np.ndarray, np.ndarray]]:
     """Random holdout of pooled transitions.
 
@@ -174,7 +187,9 @@ def split_transition(
 
 
 def split_trajectory(
-    trajectories: Sequence[np.ndarray], rng: np.random.Generator, fraction: float = 0.1
+    trajectories: Sequence[np.ndarray],
+    rng: np.random.Generator,
+    fraction: float = HOLDOUT_FRACTION,
 ) -> tuple[tuple[np.ndarray, np.ndarray], tuple[np.ndarray, np.ndarray]]:
     """Hold out whole trajectories, so nothing adjacent can leak across."""
     order = rng.permutation(len(trajectories))
@@ -185,13 +200,21 @@ def split_trajectory(
 
 
 def split_prefix(
-    trajectories: Sequence[np.ndarray], rng: np.random.Generator, fraction: float = 0.1
+    trajectories: Sequence[np.ndarray],
+    rng: np.random.Generator,
+    fraction: float = HOLDOUT_FRACTION,
 ) -> tuple[tuple[np.ndarray, np.ndarray], tuple[np.ndarray, np.ndarray]]:
     """Hold out the tail of every trajectory: a temporal extrapolation.
 
-    The strictest of the three. On real data this split currently shows almost
-    no advantage and reverses on subject-02, so it is reported as an open
-    question rather than hidden.
+    The strictest of the three, and on real retargeted motion it is the one
+    whose controlled advantage reverses. The cause is measured, not guessed:
+    real hand motion decelerates to a stop, so the held-out tail is nearly
+    motionless and predicting "no movement" already scores close to the fitted
+    model. The optimizer redistributes that deceleration, which raises the
+    tail's motion without improving it, so the arm whose tail is quietest wins
+    a test whose answer is close to zero. `scripts/diagnose_tail_extrapolation.py`
+    measures the terminal speed and the trivial-baseline score; read this
+    split's number only against that baseline.
 
     Each side has to leave at least one adjacent pair behind, so a trajectory
     needs two configurations on each side of the cut. A one-configuration tail
